@@ -8,7 +8,7 @@
 // These run in Node, not the worker: the parsers are pure, so there is no ctx to fake here. Run
 // behaviour (network, graph writes, summaries) is exercised separately by test-plugin.mjs.
 import { readFileSync } from 'node:fs';
-import { iocPath, isChallenge, searchUrl } from './fetch';
+import { iocPath, iocRequestUrl, iocUrl, isChallenge, searchUrl, withSource } from './fetch';
 import { parseDetailPage, parseSearchPage, nodeForItem, lookupTargets } from './ioc';
 import type { SearchItem } from './ioc';
 
@@ -184,10 +184,21 @@ eq(
 eq(iocPath('52fd47ca'), '/iocs/52fd47ca/', 'path: a plain value is unchanged');
 eq(
     searchUrl('blockchain', 'domain', 2),
-    'https://lazarus.day/iocs/?q=blockchain&category=domain&page=2',
-    'search URL: query, category and page',
+    'https://lazarus.day/iocs/?q=blockchain&category=domain&page=2&utm_source=vineyard',
+    'search URL: query, category, page and source tag',
 );
-eq(searchUrl('a b', 'all', 1), 'https://lazarus.day/iocs/?q=a+b', 'search URL: space encoded as +, no empty params');
+eq(
+    searchUrl('a b', 'all', 1),
+    'https://lazarus.day/iocs/?q=a+b&utm_source=vineyard',
+    'search URL: space encoded as +, no empty params',
+);
+eq(iocUrl('abc'), 'https://lazarus.day/iocs/abc/', 'record URL: clean, no attribution');
+eq(iocRequestUrl('abc'), 'https://lazarus.day/iocs/abc/?utm_source=vineyard', 'request URL: carries the source tag');
+eq(
+    withSource('https://lazarus.day/iocs/?q=a'),
+    'https://lazarus.day/iocs/?q=a&utm_source=vineyard',
+    'source tag: an existing query gets &',
+);
 
 // ---- challenge detection -------------------------------------------------------------------
 {

@@ -95,8 +95,13 @@ function ctxOnWeb(net, graph, params, selection = []) {
 
     check('search: one request for one page', net.calls.length === 1);
     check('search: query in the URL', net.calls[0].url.includes('q=blockchain'));
+    check('search: request carries utm_source=vineyard', net.calls[0].url.includes('utm_source=vineyard'));
     check('search: no category param for "all"', !net.calls[0].url.includes('category='));
     check('search: 15 nodes staged', graph.created.length === 15);
+    check(
+        'search: stored provenance URLs stay clean of utm_source',
+        graph.created.every((n) => !String(n.data.lazarus_day_url ?? '').includes('utm_source')),
+    );
     check('search: no anchor node invented', graph.edges.length === 0);
     check(
         'search: e-mail node decoded from the Cloudflare-obfuscated href',
@@ -121,6 +126,7 @@ function ctxOnWeb(net, graph, params, selection = []) {
     );
     const r = await search.run(RUN(net, graph, { query: 'blockchain', category: 'domain', pages: 2 }));
     check('search: page 2 requested', net.calls.length === 2 && net.calls[1].url.includes('page=2'));
+    check('search: pagination carries utm_source', net.calls[1].url.includes('utm_source=vineyard'));
     check('search: category kept on every page', net.calls.every((c) => c.url.includes('category=domain')));
     check('search: past-the-end 404 is not a failure', r.counts.failed === 0 && r.counts.pages === 1);
     check('search: nodes from page 1 staged', graph.created.length === 15);
@@ -202,10 +208,14 @@ ${articles}
         url.includes('?q=') ? { status: 200, body: hashSearchPage([HASH_SHA256]) } : { status: 200, body: fixture('detail-hash.html') },
     );
     const r = await search.run(RUN(net, graph, { query: HASH_SHA256 }));
-    check('search hash: the record page is fetched', net.calls.length === 2 && net.calls[1].url === `https://lazarus.day/iocs/${HASH_SHA256}/`);
+    check(
+        'search hash: the record page is fetched with the source tag',
+        net.calls.length === 2 && net.calls[1].url === `https://lazarus.day/iocs/${HASH_SHA256}/?utm_source=vineyard`,
+    );
     const node = graph.created.find((n) => n.type === 'threat.file_hash');
     check('search hash: one File Hash node', graph.created.length === 1 && !!node);
     check('search hash: SHA-256 is the identity', node?.data.sha256 === HASH_SHA256);
+    check('search hash: the stored record URL stays clean', node?.data.lazarus_day_url === `https://lazarus.day/iocs/${HASH_SHA256}/`);
     check('search hash: MD5 filled from the record', node?.data.md5 === HASH_MD5);
     check('search hash: SHA-1 filled from the record', node?.data.sha1 === 'e889544aff85ffaf8b0d0da705105dee7c97fe26');
     check('search hash: a clean resolution reports no failure', !/could not be fetched|had no SHA-256|not resolved/.test(r.summary));
@@ -272,7 +282,14 @@ ${articles}
     const net = makeNet(() => ({ status: 200, body: fixture('detail-domain.html') }));
     const r = await lookup.run(RUN(net, graph, {}, ['d1']));
 
-    check('lookup: exact record URL, no search', net.calls.length === 1 && net.calls[0].url === 'https://lazarus.day/iocs/blockchain-newtech.com/');
+    check(
+        'lookup: exact record URL with the source tag, no search',
+        net.calls.length === 1 && net.calls[0].url === 'https://lazarus.day/iocs/blockchain-newtech.com/?utm_source=vineyard',
+    );
+    check(
+        'lookup: the recorded provenance URL stays clean',
+        graph.updates[0].data.lazarus_day_url === 'https://lazarus.day/iocs/blockchain-newtech.com/',
+    );
     check('lookup: the selected node is enriched, not duplicated', graph.updates.length === 1 && graph.updates[0].id === 'd1');
     check('lookup: record dates written onto the node', graph.updates[0].data.lazarus_day_first_seen === '2023-12-08');
     check('lookup: five reports become five Campaigns', graph.created.filter((n) => n.type === 'threat.campaign').length === 5);
@@ -286,6 +303,10 @@ ${articles}
     check(
         'lookup: campaign description attributes the publisher',
         graph.created.some((n) => n.type === 'threat.campaign' && /Report by Microsoft/.test(n.data.description)),
+    );
+    check(
+        'lookup: campaign and related URLs stay clean of utm_source',
+        graph.created.every((n) => !String(n.data.lazarus_day_url ?? '').includes('utm_source')),
     );
     check('lookup: resolved IP added as a node', graph.created.some((n) => n.type === 'infrastructure.ip_address' && n.data.ip_address === '160.16.200.77'));
     check('lookup: URL on the domain added as a node', graph.created.some((n) => n.type === 'web.url' && n.data.url === 'https://blockchain-newtech.com/download/download.asp'));
@@ -363,6 +384,7 @@ ${articles}
     const net = makeNet(() => ({ status: 200, body: fixture('detail-url.html') }));
     const r = await lookup.run(RUN(net, graph, { include_related_iocs: false }, ['u1']));
     check('lookup: URL value is double-encoded in the path', net.calls.length === 1 && net.calls[0].url.includes('%253A%252F'));
+    check('lookup URL: the request carries the source tag', net.calls[0].url.includes('utm_source=vineyard'));
     check('lookup: URL record parsed', r.counts.listed === 1);
 }
 {

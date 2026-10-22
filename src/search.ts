@@ -12,7 +12,7 @@
 // Shodan Search plugin ships.
 import { definePlugin } from './sdk';
 import type { HostContext, RunResult } from './sdk';
-import { ENDPOINT, Pacer, fetchPage, isChallenge, searchUrl } from './fetch';
+import { ENDPOINT, Pacer, fetchPage, isChallenge, searchUrl, withSource } from './fetch';
 import { parseSearchPage, parseDetailPage } from './ioc';
 import type { NodeDraft, SearchItem } from './ioc';
 import { nodeForItem } from './ioc';
@@ -74,7 +74,7 @@ async function resolveHashItem(
         return fallback;
     }
     state.lookups++;
-    const page = await fetchPage(ctx, url, pacer);
+    const page = await fetchPage(ctx, withSource(url), pacer);
     if (ctx.signal?.aborted) return fallback;
     if (page.error || page.status === 429 || isChallenge(page)) {
         state.unresolved++;
@@ -113,7 +113,7 @@ export const lazarusSearch = definePlugin({
         identifier: 'run.vineyard.plugins.lazarusday_search',
         content_type: 'vineyard:plugin',
         name: 'lazarus.day IOC Search',
-        version: '1.2.0',
+        version: '1.3.0',
         description:
             'Searches lazarus.day’s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only.',
         icon: 'radar',
