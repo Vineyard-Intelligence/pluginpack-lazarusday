@@ -4,7 +4,8 @@ Reads the public DPRK indicator index at **https://lazarus.day/iocs/** into a Vi
 **keyword search** over the index, and an **exact-record lookup** for indicators already on the
 canvas.
 
-**Data source:** every request this pack makes goes to `https://lazarus.day` and nowhere else. The
+**Data source:** every request this pack makes goes to `https://lazarus.day` — the public DPRK
+indicator index maintained by [@lazarusholic](https://x.com/lazarusholic) — and nowhere else. The
 manifest declares exactly one network endpoint, `https://lazarus.day/iocs`, and the host bridge
 refuses any other origin or path — there is no arbitrary-host probe. The pack reads the site's
 public HTML pages anonymously (no account, no credential, no cookies) and links every staged node
@@ -164,8 +165,9 @@ npm run live        # reads the live site; not part of build
 ## Data and licence
 
 Pack code: Apache-2.0 (see `LICENSE`). The indicator data belongs to
-[lazarus.day](https://lazarus.day/about/); this pack reads it anonymously and read-only, and links
-every staged node back to its record page. Not affiliated with the site.
+[@lazarusholic](https://x.com/lazarusholic)’s [lazarus.day](https://lazarus.day/about/); this pack
+reads it anonymously and read-only, and links every staged node back to its record page. Not
+affiliated with the site.
 
 Published in the Vineyard registry as `run.vineyard.pluginpacks.lazarusday`, pinned to the
 manifest commit in
