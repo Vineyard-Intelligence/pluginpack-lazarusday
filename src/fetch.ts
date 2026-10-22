@@ -22,6 +22,8 @@ import type { HostContext, SafeResponse } from './sdk';
 export const BASE = 'https://lazarus.day';
 /** The one origin/path this pack is allowed to reach; mirrored by scopes.network in both plugins. */
 export const ENDPOINT = `${BASE}/iocs`;
+/** Attribution for the requests only. Never written into the URLs stored on nodes. */
+export const SOURCE = 'vineyard';
 const RETRY_AFTER_MS = 2_000;
 
 export interface Page {
@@ -57,11 +59,28 @@ export function iocUrl(value: string): string {
     return BASE + iocPath(value);
 }
 
+/**
+ * The same URL with `utm_source=vineyard` on it.
+ *
+ * The site ignores the parameter; it is there so the operator's logs/analytics can see that a
+ * request came from this pack. It belongs to the REQUEST, not to the record: `iocUrl()` and the
+ * URLs stored as `lazarus_day_url` stay clean.
+ */
+export function withSource(url: string): string {
+    return `${url}${url.includes('?') ? '&' : '?'}utm_source=${SOURCE}`;
+}
+
+export function iocRequestUrl(value: string): string {
+    return withSource(iocUrl(value));
+}
+
 export function searchUrl(query: string, category: string, page: number): string {
     const qs = new URLSearchParams();
     qs.set('q', query);
     if (category && category !== 'all') qs.set('category', category);
     if (page > 1) qs.set('page', String(page));
+    // Every page request carries it, including page 2+ and the filtered variants.
+    qs.set('utm_source', SOURCE);
     return `${BASE}/iocs/?${qs.toString()}`;
 }
 

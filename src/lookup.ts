@@ -12,7 +12,7 @@
 // other two digests. Those are the facts staged here. Nothing is inferred from a tag or a name.
 import { definePlugin } from './sdk';
 import type { GraphNode, HostContext, RunResult } from './sdk';
-import { BASE, ENDPOINT, Pacer, fetchPage, iocUrl, isChallenge } from './fetch';
+import { BASE, ENDPOINT, Pacer, fetchPage, iocRequestUrl, iocUrl, isChallenge } from './fetch';
 import { lookupTargets, parseDetailPage } from './ioc';
 import type { IocDetail, Report } from './ioc';
 
@@ -92,7 +92,7 @@ export const lazarusLookup = definePlugin({
         identifier: 'run.vineyard.plugins.lazarusday_lookup',
         content_type: 'vineyard:plugin',
         name: 'lazarus.day IOC Lookup',
-        version: '1.1.3',
+        version: '1.3.0',
         description:
             'Looks up each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record in lazarus.day’s public DPRK indicator index, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only.',
         icon: 'crosshair',
@@ -237,7 +237,7 @@ export const lazarusLookup = definePlugin({
             for (const value of target.candidates) {
                 if (ctx.signal?.aborted) break;
                 const url = iocUrl(value);
-                const page = await fetchPage(ctx, url, pacer);
+                const page = await fetchPage(ctx, iocRequestUrl(value), pacer);
                 if (ctx.signal?.aborted) {
                     stopped = true;
                     break;
