@@ -157,5 +157,6 @@ Pack code: Apache-2.0 (see `LICENSE`). The indicator data belongs to
 [lazarus.day](https://lazarus.day/about/); this pack reads it anonymously and read-only, and links
 every staged node back to its record page. Not affiliated with the site.
 
-Not yet published: this directory is the pack repo, but there is no registry entry pinned to a
-commit yet.
+Published in the Vineyard registry as `run.vineyard.pluginpacks.lazarusday`, pinned to the
+manifest commit in
+[`packs/run.vineyard.pluginpacks.lazarusday.json`](https://github.com/Vineyard-Intelligence/registry/blob/main/packs/run.vineyard.pluginpacks.lazarusday.json).
