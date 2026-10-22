@@ -88,8 +88,8 @@ Every node carries `lazarus_day_url` and, when the row has them, `lazarus_day_fi
 as themselves, which is also how the Shodan Search plugin ships. Nodes that already exist on the
 canvas are reused by the host's normal identity de-duplication.
 
-Params: `query` (required), `category` (one of the seven or `all`), `pages` (1–10, default 1;
-15 indicators each). The run states the total match count and how many pages of it were read.
+Params: `query` (required), `category` (one of the seven; default `all`), `pages` (1–10, default
+1; 15 indicators each). The run states the total match count and how many pages of it were read.
 
 ## Lookup: exact record → metadata, reports, pivots
 
