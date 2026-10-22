@@ -2,7 +2,7 @@
 //
 // The parsers are covered by src/selftest.ts. What is left is everything that needs a ctx: what
 // gets requested, what gets written, and — as important — what the summary says when the answer is
-// "not listed" rather than "failed". The probe is mocked with the same fixture pages the parser
+// "not listed" rather than "failed". The declared endpoint is mocked with the same fixtures the parser
 // test uses, so a run sees realistic bytes without touching the network.
 //
 // Run: node test-plugin.mjs   (npm run test:plugin)
@@ -44,29 +44,35 @@ function makeGraph(seed = {}) {
     };
 }
 
-function makeProbe(respond) {
+function makeNet(respond) {
     const calls = [];
     return {
         calls,
-        async probe(url, init) {
+        async fetch(url, init) {
             calls.push({ url, init });
             const r = respond(url) ?? { status: 404 };
+            if (r.throw) throw new Error(r.throw);
+            const body = r.body ?? '';
             return {
+                ok: r.status >= 200 && r.status < 300,
                 status: r.status,
                 headers: r.headers ?? {},
-                body: r.body ?? '',
-                truncated: !!r.truncated,
-                redirectUrl: r.redirectUrl,
-                error: r.error,
+                async text() {
+                    return body;
+                },
+                async json() {
+                    return JSON.parse(body);
+                },
             };
         },
     };
 }
 
-function ctxOf({ probe, graph, params, selection = [] }) {
+function ctxOf({ net, graph, params, selection = [], platform = 'desktop' }) {
     return {
-        net: probe ? { probe: probe.probe } : {},
+        net: net ? { fetch: net.fetch } : {},
         graph,
+        run: { platform },
         input: { selection },
         params,
         config: {},
@@ -75,17 +81,21 @@ function ctxOf({ probe, graph, params, selection = [] }) {
     };
 }
 
-const RUN = (probe, graph, params, selection = []) => ctxOf({ probe, graph, params, selection });
+const RUN = (net, graph, params, selection = []) => ctxOf({ net, graph, params, selection });
+
+function ctxOnWeb(net, graph, params, selection = []) {
+    return ctxOf({ net, graph, params, selection, platform: 'web' });
+}
 
 // ================================================================ search
 {
     const graph = makeGraph();
-    const probe = makeProbe(() => ({ status: 200, body: fixture('search-blockchain.html') }));
-    const r = await search.run(RUN(probe, graph, { query: 'blockchain', pages: 1 }));
+    const net = makeNet(() => ({ status: 200, body: fixture('search-blockchain.html') }));
+    const r = await search.run(RUN(net, graph, { query: 'blockchain', pages: 1 }));
 
-    check('search: one request for one page', probe.calls.length === 1);
-    check('search: query in the URL', probe.calls[0].url.includes('q=blockchain'));
-    check('search: no category param for "all"', !probe.calls[0].url.includes('category='));
+    check('search: one request for one page', net.calls.length === 1);
+    check('search: query in the URL', net.calls[0].url.includes('q=blockchain'));
+    check('search: no category param for "all"', !net.calls[0].url.includes('category='));
     check('search: 15 nodes staged', graph.created.length === 15);
     check('search: no anchor node invented', graph.edges.length === 0);
     check(
@@ -106,39 +116,34 @@ const RUN = (probe, graph, params, selection = []) => ctxOf({ probe, graph, para
 {
     // Page two is past the end: the site answers 404, which must end the paging quietly.
     const graph = makeGraph();
-    const probe = makeProbe((url) =>
+    const net = makeNet((url) =>
         url.includes('page=2') ? { status: 404 } : { status: 200, body: fixture('search-blockchain.html') },
     );
-    const r = await search.run(RUN(probe, graph, { query: 'blockchain', category: 'domain', pages: 2 }));
-    check('search: page 2 requested', probe.calls.length === 2 && probe.calls[1].url.includes('page=2'));
-    check('search: category kept on every page', probe.calls.every((c) => c.url.includes('category=domain')));
+    const r = await search.run(RUN(net, graph, { query: 'blockchain', category: 'domain', pages: 2 }));
+    check('search: page 2 requested', net.calls.length === 2 && net.calls[1].url.includes('page=2'));
+    check('search: category kept on every page', net.calls.every((c) => c.url.includes('category=domain')));
     check('search: past-the-end 404 is not a failure', r.counts.failed === 0 && r.counts.pages === 1);
     check('search: nodes from page 1 staged', graph.created.length === 15);
 }
 {
     const graph = makeGraph();
-    const probe = makeProbe(() => ({ status: 200, body: fixture('search-empty.html') }));
-    const r = await search.run(RUN(probe, graph, { query: 'zzzznotfoundzzzz' }));
+    const net = makeNet(() => ({ status: 200, body: fixture('search-empty.html') }));
+    const r = await search.run(RUN(net, graph, { query: 'zzzznotfoundzzzz' }));
     check('search: empty result stages nothing', graph.created.length === 0);
     check('search: empty result is called a real negative', /lists no indicator matching/.test(r.summary));
 }
 {
     const graph = makeGraph();
-    const probe = makeProbe(() => ({ status: 403, body: '<title>Just a moment...</title>' }));
-    const r = await search.run(RUN(probe, graph, { query: 'blockchain' }));
+    const net = makeNet(() => ({ status: 403, body: '<title>Just a moment...</title>' }));
+    const r = await search.run(RUN(net, graph, { query: 'blockchain' }));
     check('search: challenge is counted as blocked, not as zero results', r.counts.blocked === 1 && graph.created.length === 0);
     check('search: challenge is named in the summary', /bot challenge/.test(r.summary));
 }
 {
     const graph = makeGraph();
-    const r = await search.run({ ...RUN(null, graph, { query: 'x' }) });
-    check('search: web build gets the desktop explanation', /desktop app/.test(r.summary));
-}
-{
-    const graph = makeGraph();
-    const probe = makeProbe(() => ({ status: 200, body: fixture('search-blockchain.html') }));
-    const r = await search.run(RUN(probe, graph, { query: '   ' }));
-    check('search: blank query refuses before any request', probe.calls.length === 0 && /Enter a search keyword/.test(r.summary));
+    const net = makeNet(() => ({ status: 200, body: fixture('search-blockchain.html') }));
+    const r = await search.run(RUN(net, graph, { query: '   ' }));
+    check('search: blank query refuses before any request', net.calls.length === 0 && /Enter a search keyword/.test(r.summary));
 }
 
 {
@@ -154,8 +159,8 @@ const RUN = (probe, graph, params, selection = []) => ctxOf({ probe, graph, para
 </div>
 <div id="grid-view"></div>`;
     const graph = makeGraph();
-    const probe = makeProbe(() => ({ status: 200, body: yaraPage }));
-    const r = await search.run(RUN(probe, graph, { query: 'relayshell' }));
+    const net = makeNet(() => ({ status: 200, body: yaraPage }));
+    const r = await search.run(RUN(net, graph, { query: 'relayshell' }));
     check('search: a YARA row stages nothing', graph.created.length === 0);
     check('search: a YARA row is counted, not hidden', r.counts.skipped_yara === 1);
     check('search: the skip is stated in the summary', /YARA rule result was skipped/.test(r.summary));
@@ -163,9 +168,9 @@ const RUN = (probe, graph, params, selection = []) => ctxOf({ probe, graph, para
 }
 {
     const graph = makeGraph();
-    const probe = makeProbe(() => ({ status: 200, body: '' }));
-    const r = await search.run(RUN(probe, graph, { query: 'relayshell', category: 'yara' }));
-    check('search: the YARA category is refused without a request', probe.calls.length === 0 && /not staged yet/.test(r.summary));
+    const net = makeNet(() => ({ status: 200, body: '' }));
+    const r = await search.run(RUN(net, graph, { query: 'relayshell', category: 'yara' }));
+    check('search: the YARA category is refused without a request', net.calls.length === 0 && /not staged yet/.test(r.summary));
     check('lookup: no YARA/signature type is consumed', !lookup.manifest.io.consumes.some((t) => t.name === 'signature'));
 }
 
@@ -174,10 +179,10 @@ const RUN = (probe, graph, params, selection = []) => ctxOf({ probe, graph, para
     const graph = makeGraph({
         d1: { id: 'd1', type: 'infrastructure.domain', data: { domain_name: 'blockchain-newtech.com' } },
     });
-    const probe = makeProbe(() => ({ status: 200, body: fixture('detail-domain.html') }));
-    const r = await lookup.run(RUN(probe, graph, {}, ['d1']));
+    const net = makeNet(() => ({ status: 200, body: fixture('detail-domain.html') }));
+    const r = await lookup.run(RUN(net, graph, {}, ['d1']));
 
-    check('lookup: exact record URL, no search', probe.calls.length === 1 && probe.calls[0].url === 'https://lazarus.day/iocs/blockchain-newtech.com/');
+    check('lookup: exact record URL, no search', net.calls.length === 1 && net.calls[0].url === 'https://lazarus.day/iocs/blockchain-newtech.com/');
     check('lookup: the selected node is enriched, not duplicated', graph.updates.length === 1 && graph.updates[0].id === 'd1');
     check('lookup: record dates written onto the node', graph.updates[0].data.lazarus_day_first_seen === '2023-12-08');
     check('lookup: five reports become five Campaigns', graph.created.filter((n) => n.type === 'threat.campaign').length === 5);
@@ -206,16 +211,16 @@ const RUN = (probe, graph, params, selection = []) => ctxOf({ probe, graph, para
         d1: { id: 'd1', type: 'infrastructure.domain', data: { domain_name: 'blockchain-newtech.com' } },
         d2: { id: 'd2', type: 'infrastructure.domain', data: { domain_name: 'blockchain-newtech.com' } },
     });
-    const probe = makeProbe(() => ({ status: 200, body: fixture('detail-domain.html') }));
-    await lookup.run(RUN(probe, graph, { include_related_iocs: false }, ['d1', 'd2']));
+    const net = makeNet(() => ({ status: 200, body: fixture('detail-domain.html') }));
+    await lookup.run(RUN(net, graph, { include_related_iocs: false }, ['d1', 'd2']));
     check('lookup: campaigns are shared across seeds in one run', graph.created.filter((n) => n.type === 'threat.campaign').length === 5);
     check('lookup: both seeds link to them', graph.edges.filter((e) => e.label === 'reported in').length === 10);
     check('lookup: related IOCs can be turned off', !graph.created.some((n) => n.type === 'web.url'));
 }
 {
     const graph = makeGraph({ d1: { id: 'd1', type: 'infrastructure.domain', data: { domain_name: 'nope.example' } } });
-    const probe = makeProbe(() => ({ status: 404, body: fixture('not-found.html') }));
-    const r = await lookup.run(RUN(probe, graph, {}, ['d1']));
+    const net = makeNet(() => ({ status: 404, body: fixture('not-found.html') }));
+    const r = await lookup.run(RUN(net, graph, {}, ['d1']));
     check('lookup: 404 is a real negative', r.counts.not_listed === 1 && r.counts.failed === 0);
     check('lookup: nothing written for a 404', graph.updates.length === 0 && graph.created.length === 0);
     check('lookup: summary says not listed, not failed', /not listed|None of the/.test(r.summary) && !/lookup\(s\) failed/.test(r.summary));
@@ -224,8 +229,8 @@ const RUN = (probe, graph, params, selection = []) => ctxOf({ probe, graph, para
 // ================================================================ lookup: IP
 {
     const graph = makeGraph({ i1: { id: 'i1', type: 'infrastructure.ip_address', data: { ip_address: '23.27.13.72' } } });
-    const probe = makeProbe(() => ({ status: 200, body: fixture('detail-ip.html') }));
-    const r = await lookup.run(RUN(probe, graph, { include_related_iocs: false }, ['i1']));
+    const net = makeNet(() => ({ status: 200, body: fixture('detail-ip.html') }));
+    const r = await lookup.run(RUN(net, graph, { include_related_iocs: false }, ['i1']));
     check('lookup ip: asn written onto the IP as an integer', graph.updates[0].data.asn === 149440);
     check('lookup ip: ASN name kept in a namespaced extra', graph.updates[0].data.lazarus_day_asn_name === 'Evoxt Sdn. Bhd.');
     check('lookup ip: country and coordinates kept', graph.updates[0].data.lazarus_day_country === 'United Kingdom');
@@ -240,50 +245,65 @@ const RUN = (probe, graph, params, selection = []) => ctxOf({ probe, graph, para
     const sha1 = 'b'.repeat(40);
     const md5 = 'db349b97c37d22f5ea1d1841e3c89eb4';
     const graph = makeGraph({ h1: { id: 'h1', type: 'threat.file_hash', data: { sha256, sha1, md5 } } });
-    const probe = makeProbe((url) => {
+    const net = makeNet((url) => {
         if (url.includes(md5)) return { status: 200, body: fixture('detail-hash.html') };
         return { status: 404 };
     });
-    const r = await lookup.run(RUN(probe, graph, { include_related_iocs: false }, ['h1']));
-    check('lookup hash: tries sha256, then sha1, then md5', probe.calls.length === 3);
+    const r = await lookup.run(RUN(net, graph, { include_related_iocs: false }, ['h1']));
+    check('lookup hash: tries sha256, then sha1, then md5', net.calls.length === 3);
     check('lookup hash: found under the MD5', r.counts.listed === 1);
     check('lookup hash: md5 and sha1 merged onto the node', graph.updates[0].data.md5 === md5 && graph.updates[0].data.sha1 === 'e889544aff85ffaf8b0d0da705105dee7c97fe26');
     check('lookup hash: the identity sha256 is never rewritten', !('sha256' in graph.updates[0].data));
     check('lookup hash: the site\'s sha256 kept as an extra', graph.updates[0].data.lazarus_day_sha256 === '24d004a104d4d54034dbcffc2a4b19a11f39008a575aa614ea04703480b1022c');
 }
 
-// ================================================================ lookup: redirects, challenge, types
+// ================================================================ scope, challenge, types
+{
+    // The whole point of the change: one declared origin/path, not an arbitrary-host probe.
+    for (const [name, plugin] of [['search', search], ['lookup', lookup]]) {
+        const network = plugin.manifest.scopes.network || [];
+        check(`${name}: exactly one declared network endpoint`, network.length === 1);
+        check(`${name}: the endpoint is https://lazarus.day/iocs`, network[0]?.endpoint === 'https://lazarus.day/iocs');
+        check(`${name}: GET only`, JSON.stringify(network[0]?.methods) === '["GET"]');
+        check(`${name}: no web_probe`, !plugin.manifest.scopes.web_probe);
+    }
+}
 {
     const graph = makeGraph({ u1: { id: 'u1', type: 'web.url', data: { url: 'https://cubedesign.co.kr/news' } } });
-    let hop = 0;
-    const probe = makeProbe(() =>
-        ++hop === 1
-            ? { status: 301, redirectUrl: '/iocs/https%253A%252F%252Fcubedesign.co.kr%252Fnews/' }
-            : { status: 200, body: fixture('detail-url.html') },
-    );
-    const r = await lookup.run(RUN(probe, graph, { include_related_iocs: false }, ['u1']));
-    check('lookup: a redirect is followed by hand', probe.calls.length === 2 && r.counts.listed === 1);
-    check('lookup: a relative redirect resolves against the requested URL', probe.calls[1].url === probe.calls[0].url);
-    check('lookup: URL value is double-encoded in the path', probe.calls[0].url.includes('%253A%252F'));
+    const net = makeNet(() => ({ status: 200, body: fixture('detail-url.html') }));
+    const r = await lookup.run(RUN(net, graph, { include_related_iocs: false }, ['u1']));
+    check('lookup: URL value is double-encoded in the path', net.calls.length === 1 && net.calls[0].url.includes('%253A%252F'));
+    check('lookup: URL record parsed', r.counts.listed === 1);
+}
+{
+    const graph = makeGraph();
+    const net = makeNet(() => ({ status: 200, body: fixture('search-blockchain.html') }));
+    const r = await search.run(ctxOnWeb(net, graph, { query: 'blockchain' }));
+    check('search: web build refuses without a request', net.calls.length === 0 && /desktop app/.test(r.summary));
+}
+{
+    const graph = makeGraph();
+    const r = await search.run(RUN(null, graph, { query: 'blockchain' }));
+    check('search: missing network capability is named, not attempted', /Network access was not granted/.test(r.summary));
 }
 {
     const graph = makeGraph({ d1: { id: 'd1', type: 'infrastructure.domain', data: { domain_name: 'x.example' } } });
-    const probe = makeProbe(() => ({ status: 403, body: '<title>Attention Required! | Cloudflare</title>' }));
-    const r = await lookup.run(RUN(probe, graph, {}, ['d1']));
+    const net = makeNet(() => ({ status: 403, body: '<title>Attention Required! | Cloudflare</title>' }));
+    const r = await lookup.run(RUN(net, graph, {}, ['d1']));
     check('lookup: challenge counted separately', r.counts.blocked === 1 && r.counts.not_listed === 0 && r.counts.failed === 0);
 }
 {
     const graph = makeGraph({ m1: { id: 'm1', type: 'threat.malware', data: { name: 'x' } } });
-    const probe = makeProbe(() => ({ status: 200, body: '' }));
-    const r = await lookup.run(RUN(probe, graph, {}, ['m1']));
-    check('lookup: an unsupported node type makes no request', probe.calls.length === 0 && r.counts.unsupported === 1);
+    const net = makeNet(() => ({ status: 200, body: '' }));
+    const r = await lookup.run(RUN(net, graph, {}, ['m1']));
+    check('lookup: an unsupported node type makes no request', net.calls.length === 0 && r.counts.unsupported === 1);
 }
 
 // ================================================================ lookup: ASN cap
 {
     const graph = makeGraph({ a1: { id: 'a1', type: 'infrastructure.autonomous_system', data: { autonomous_system_number: 149440 } } });
-    const probe = makeProbe(() => ({ status: 200, body: fixture('detail-asn.html') }));
-    const r = await lookup.run(RUN(probe, graph, { include_related_iocs: true, max_related_iocs: 10 }, ['a1']));
+    const net = makeNet(() => ({ status: 200, body: fixture('detail-asn.html') }));
+    const r = await lookup.run(RUN(net, graph, { include_related_iocs: true, max_related_iocs: 10 }, ['a1']));
     check('lookup asn: the AS organisation is written onto the node', graph.updates[0].data.autonomous_system_name === 'Evoxt Sdn. Bhd.');
     check('lookup asn: related IPs are capped', graph.created.filter((n) => n.type === 'infrastructure.ip_address').length === 10);
     check('lookup asn: the cap is stated in the summary', /left out \(limit 10\)/.test(r.summary));

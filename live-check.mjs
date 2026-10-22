@@ -2,31 +2,33 @@
 //
 // Run: npm run live   (after npm run build)
 //
-// It drives the bundled plugins with a real `probe` built on Node's fetch, in place of the Electron
-// main-process one. The contract is the same shape (`{status, headers, body, truncated,
-// redirectUrl, error}`), so a pass here means the selectors, the double-encoded paths and the
-// redirect handling all still match the live site. It only reads: graph writes are collected in
-// memory and printed, never sent anywhere.
+// It drives the bundled plugins with a `ctx.net.fetch` built on Node's fetch, standing in for the
+// renderer fetch the desktop shell makes readable through its CORS waiver. The contract is the
+// same SafeResponse shape, so a pass here means the selectors and the double-encoded paths still
+// match the live site. It only reads: graph writes are collected in memory and printed, never sent
+// anywhere.
 //
 // This is a check, not a test: the site's contents change, so the assertions are about shape and
 // plausibility (something was found, the record page parsed, a known-negative stayed negative).
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-async function probe(url, init = {}) {
+async function netFetch(url, init = {}) {
     const res = await fetch(url, {
         method: init.method ?? 'GET',
         headers: { 'user-agent': UA, accept: 'text/html,application/xhtml+xml' },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(init.timeoutMs ?? 20_000),
+        signal: AbortSignal.timeout(20_000),
     });
-    const buf = Buffer.from(await res.arrayBuffer());
-    const max = init.maxBytes ?? 1_500_000;
+    const body = await res.text();
     return {
+        ok: res.ok,
         status: res.status,
         headers: Object.fromEntries(res.headers),
-        body: buf.subarray(0, max).toString('utf8'),
-        truncated: buf.length > max,
-        redirectUrl: res.headers.get('location') ?? undefined,
+        async text() {
+            return body;
+        },
+        async json() {
+            return JSON.parse(body);
+        },
     };
 }
 
@@ -57,8 +59,9 @@ function memoryGraph(seed = {}) {
 }
 
 const ctx = (graph, params, selection = []) => ({
-    net: { probe },
+    net: { fetch: netFetch },
     graph,
+    run: { platform: 'desktop' },
     input: { selection },
     params,
     config: {},

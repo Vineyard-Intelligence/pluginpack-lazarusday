@@ -4,9 +4,11 @@ Reads the public DPRK indicator index at **https://lazarus.day/iocs/** into a Vi
 **keyword search** over the index, and an **exact-record lookup** for indicators already on the
 canvas.
 
-**Data source:** every request this pack makes goes to `https://lazarus.day` and nowhere else. It
-reads the site's public HTML pages anonymously (no account, no credential, no cookies) and links
-every staged node back to the page it came from.
+**Data source:** every request this pack makes goes to `https://lazarus.day` and nowhere else. The
+manifest declares exactly one network endpoint, `https://lazarus.day/iocs`, and the host bridge
+refuses any other origin or path — there is no arbitrary-host probe. The pack reads the site's
+public HTML pages anonymously (no account, no credential, no cookies) and links every staged node
+back to the page it came from.
 
 Two plugins:
 
@@ -21,8 +23,10 @@ Two plugins:
   for a Domain or ASN.
 
 Desktop only. lazarus.day sends no `Access-Control-Allow-Origin`, so the browser build cannot read
-its HTML; both plugins use the desktop shell's anonymous probe (`web_probe`) and say so instead of
-failing with a CORS error in the web build.
+its HTML. On desktop, the shell waives cross-origin protection for exactly the origins the open
+project's installed packs declare (`desktop/src/main/allowlist.ts`), so the same one declared
+endpoint becomes readable — and only that one. Both plugins refuse in the web build with that
+explanation instead of failing with an opaque CORS error.
 
 ## What the source actually is
 
@@ -130,13 +134,14 @@ page can list over a hundred addresses; the run says how many were left out.
 - **Related reports are what the page rendered.** The site shows the reports inline; the run counts
   what it saw and compares it to the page's own counter, and caps staging at 50 per run.
 - **A bot challenge is not an empty result.** A 403/503, or a real challenge body, is counted as
-  `blocked` and named in the summary; a truncated page is a failure, not a short page. Cloudflare's
+  `blocked` and named in the summary. Cloudflare's
   ordinary bot-detection script (`challenge-platform`) is injected into every page including 404s,
   so it is deliberately *not* a challenge marker — matching it turned “not listed” into “blocked”
   during development.
 - **Politeness.** Requests are paced at 350 ms; a 429 or 5xx gets one retry (honouring
-  `Retry-After` when present). No credential is sent; the probe is anonymous and does not follow
-  redirects, so this pack follows them itself (up to 4).
+  `Retry-After` when present). The fetch carries no credential (`credentials: "omit"` is forced by
+  the host) and no headers; same-origin redirects such as a missing trailing slash are followed by
+  the browser, and a redirect to another origin has no waiver and cannot be read.
 
 ## Checks
 
@@ -150,8 +155,9 @@ npm run live        # reads the live site; not part of build
 - `src/selftest.ts` — parsers against real bytes in `test-fixtures/` (search page, empty search,
   domain/IP/hash/ASN/e-mail/URL records, the live 404 page), plus node mapping, lookup targets,
   double-encoding and challenge detection.
-- `test-plugin.mjs` — the `run()` bodies with a mocked probe and graph: what is requested, what is
-  written, and what the summary says for a negative, a challenge, a redirect and a digest fallback.
+- `test-plugin.mjs` — the `run()` bodies with a mocked network endpoint and graph: what is
+  requested, what is written, and what the summary says for a negative, a challenge and a digest
+  fallback.
 - `live-check.mjs` — the same bundle against the real site, with a memory graph; asserts shape, not
   specific indicators.
 

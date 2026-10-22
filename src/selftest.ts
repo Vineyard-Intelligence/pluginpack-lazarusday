@@ -195,19 +195,19 @@ eq(searchUrl('a b', 'all', 1), 'https://lazarus.day/iocs/?q=a+b', 'search URL: s
     // end of every page). A generic marker match once classified this as a bot challenge, which
     // turned "not listed" into "blocked" — the exact confusion the run summary exists to avoid.
     const notFound = fixture('not-found.html');
-    eq(isChallenge({ requested: 'u', url: 'u', status: 404, headers: {}, body: notFound, truncated: false, hops: 0 }), false, 'challenge: a real 404 is not a challenge');
+    eq(isChallenge({ url: 'u', status: 404, headers: {}, body: notFound }), false, 'challenge: a real 404 is not a challenge');
     eq(
-        isChallenge({ requested: 'u', url: 'u', status: 200, headers: {}, body: notFound, truncated: false, hops: 0 }),
+        isChallenge({ url: 'u', status: 200, headers: {}, body: notFound }),
         false,
         'challenge: a normal page carrying the JSD script is not a challenge',
     );
     eq(
-        isChallenge({ requested: 'u', url: 'u', status: 403, headers: {}, body: '<title>Just a moment...</title>', truncated: false, hops: 0 }),
+        isChallenge({ url: 'u', status: 403, headers: {}, body: '<title>Just a moment...</title>' }),
         true,
         'challenge: a 403 is a block',
     );
     eq(
-        isChallenge({ requested: 'u', url: 'u', status: 200, headers: {}, body: '<div id="cf-browser-verification"></div>', truncated: false, hops: 0 }),
+        isChallenge({ url: 'u', status: 200, headers: {}, body: '<div id="cf-browser-verification"></div>' }),
         true,
         'challenge: the verification form is a block even with a 200',
     );

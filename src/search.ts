@@ -12,7 +12,7 @@
 // Shodan Search plugin ships.
 import { definePlugin } from './sdk';
 import type { HostContext, RunResult } from './sdk';
-import { Pacer, fetchPage, isChallenge, searchUrl } from './fetch';
+import { ENDPOINT, Pacer, fetchPage, isChallenge, searchUrl } from './fetch';
 import { parseSearchPage } from './ioc';
 import { nodeForItem } from './ioc';
 
@@ -38,9 +38,9 @@ export const lazarusSearch = definePlugin({
         identifier: 'run.vineyard.plugins.lazarusday_search',
         content_type: 'vineyard:plugin',
         name: 'lazarus.day IOC Search',
-        version: '1.0.1',
+        version: '1.1.0',
         description:
-            'Queries https://lazarus.day\'s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only (lazarus.day sends no CORS headers).',
+            'Searches lazarus.day’s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only (lazarus.day sends no CORS headers).',
         icon: 'radar',
         author: { name: 'VINEYARD', url: 'https://vineyard.run' },
         license: 'Apache-2.0',
@@ -93,21 +93,28 @@ export const lazarusSearch = definePlugin({
         },
         scopes: {
             graph: ['node:create'],
-            web_probe: {
-                purpose: 'Search lazarus.day’s public IOC index by keyword and read the result pages.',
-            },
+            // Exactly one endpoint: the site's IOC pages. The host bridge refuses anything else,
+            // and the desktop shell waives CORS for this one origin while the pack is installed.
+            network: [
+                {
+                    endpoint: ENDPOINT,
+                    methods: ['GET'],
+                    purpose: 'Search lazarus.day’s public IOC index by keyword and read the result pages.',
+                },
+            ],
         },
         lifecycle: { persistence: 'opt-in', controls: ['progress', 'cancel'], progress: 'determinate' },
     },
 
     async run(ctx: HostContext): Promise<RunResult> {
-        if (!ctx.net?.probe) {
+        if (ctx.run.platform !== 'desktop') {
             return {
                 summary:
-                    'This plugin only runs in the Vineyard desktop app: lazarus.day sends no CORS headers, so a browser build cannot read its pages. Open the same project in the desktop app to run it.',
+                    'This plugin only runs in the Vineyard desktop app: lazarus.day sends no CORS headers, so the browser build cannot read its pages. Open the same project in the desktop app to run it.',
                 counts: { iocs: 0 },
             };
         }
+        if (!ctx.net?.fetch) return { summary: 'Network access was not granted to this plugin', counts: { iocs: 0 } };
         if (!ctx.graph?.createNode) return { summary: 'Graph write access was not granted to this plugin', counts: { iocs: 0 } };
 
         const query = String(ctx.params?.query ?? '').trim();
@@ -154,12 +161,6 @@ export const lazarusSearch = definePlugin({
                 break;
             }
             if (res.error) {
-                failed++;
-                break;
-            }
-            if (res.truncated) {
-                // A truncated page is not a short page. Parsing it would report the rows it managed
-                // to carry as the whole answer.
                 failed++;
                 break;
             }
