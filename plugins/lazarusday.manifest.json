@@ -1,0 +1,264 @@
+{
+  "identifier": "run.vineyard.pluginpacks.lazarusday",
+  "content_type": "vineyard:pluginpack",
+  "name": "Lazarus Day",
+  "version": "1.0.0",
+  "description": "Searches and reads the lazarus.day DPRK indicator index: a keyword search that stages indicators as graph nodes, and an exact-record lookup that adds the reports naming a selected indicator. Desktop only.",
+  "author": {
+    "name": "VINEYARD",
+    "url": "https://vineyard.run"
+  },
+  "license": "Apache-2.0",
+  "icon": "radar",
+  "platforms": {
+    "primary": "desktop",
+    "web": {
+      "runtime": "sandbox-js",
+      "entry": "dist/pack.mjs"
+    },
+    "desktop": {
+      "runtime": "sandbox-js",
+      "entry": "dist/pack.mjs"
+    }
+  },
+  "plugins": [
+    {
+      "identifier": "run.vineyard.plugins.lazarusday_search",
+      "content_type": "vineyard:plugin",
+      "name": "Lazarus Day IOC Search",
+      "version": "1.0.0",
+      "description": "Searches the lazarus.day DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only (lazarus.day sends no CORS headers).",
+      "icon": "radar",
+      "license": "Apache-2.0",
+      "platforms": {
+        "primary": "desktop",
+        "web": {
+          "runtime": "sandbox-js",
+          "entry": "dist/pack.mjs"
+        },
+        "desktop": {
+          "runtime": "sandbox-js",
+          "entry": "dist/pack.mjs"
+        }
+      },
+      "io": {
+        "consumes": [],
+        "produces": [
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "infrastructure",
+            "name": "domain"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "infrastructure",
+            "name": "ip_address"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "web",
+            "name": "url"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "infrastructure",
+            "name": "autonomous_system"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.threat",
+            "category": "threat",
+            "name": "file_hash"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.threat",
+            "category": "threat",
+            "name": "indicator"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.identity",
+            "category": "identity",
+            "name": "email_address"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.financial",
+            "category": "financial",
+            "name": "crypto_address"
+          }
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Search query",
+            "minLength": 1,
+            "description": "Keyword to search the indicator values for, e.g. \"blockchain\" or \"kimsuky\". The site matches a case-insensitive substring, so a domain, a hash prefix or a full value all work."
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "enum": [
+              "all",
+              "domain",
+              "ipv4",
+              "url",
+              "hash",
+              "email",
+              "wallet",
+              "asn"
+            ],
+            "default": "all",
+            "description": "Restrict the search to one IOC category. \"all\" searches every category."
+          },
+          "pages": {
+            "type": "integer",
+            "title": "Pages",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 1,
+            "description": "Result pages to read, 15 indicators each, newest first. One page is usually the right answer for a specific keyword; raise it for a broad one."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "scopes": {
+        "graph": [
+          "node:create"
+        ],
+        "web_probe": {
+          "purpose": "Search lazarus.day’s public IOC index by keyword and read the result pages."
+        }
+      },
+      "lifecycle": {
+        "persistence": "opt-in",
+        "controls": [
+          "progress",
+          "cancel"
+        ],
+        "progress": "determinate"
+      }
+    },
+    {
+      "identifier": "run.vineyard.plugins.lazarusday_lookup",
+      "content_type": "vineyard:plugin",
+      "name": "Lazarus Day IOC Lookup",
+      "version": "1.0.0",
+      "description": "Looks up each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record in the lazarus.day DPRK indicator index, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only (lazarus.day sends no CORS headers).",
+      "icon": "crosshair",
+      "license": "Apache-2.0",
+      "platforms": {
+        "primary": "desktop",
+        "web": {
+          "runtime": "sandbox-js",
+          "entry": "dist/pack.mjs"
+        },
+        "desktop": {
+          "runtime": "sandbox-js",
+          "entry": "dist/pack.mjs"
+        }
+      },
+      "io": {
+        "consumes": [
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "infrastructure",
+            "name": "domain"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "infrastructure",
+            "name": "ip_address"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "web",
+            "name": "url"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "infrastructure",
+            "name": "autonomous_system"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.threat",
+            "category": "threat",
+            "name": "file_hash"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.identity",
+            "category": "identity",
+            "name": "email_address"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.financial",
+            "category": "financial",
+            "name": "crypto_address"
+          }
+        ],
+        "produces": [
+          {
+            "typepack": "run.vineyard.typepacks.threat",
+            "category": "threat",
+            "name": "campaign"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "infrastructure",
+            "name": "ip_address"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "web",
+            "name": "url"
+          },
+          {
+            "typepack": "run.vineyard.typepacks.infrastructure",
+            "category": "infrastructure",
+            "name": "autonomous_system"
+          }
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "include_related_iocs": {
+            "type": "boolean",
+            "title": "Also add related IOCs",
+            "default": true,
+            "description": "For a selected Domain, add the IPs it resolved to and the URLs the site lists on it; for a selected ASN, add the associated IPs. Off means only the record itself and its reports."
+          },
+          "max_related_iocs": {
+            "type": "integer",
+            "title": "Related IOC limit",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50,
+            "description": "Most related IOCs to add per selected Domain or ASN. An ASN page can list over a hundred addresses; the run says how many were left out."
+          }
+        }
+      },
+      "scopes": {
+        "graph": [
+          "node:read",
+          "node:create",
+          "node:update",
+          "edge:create"
+        ],
+        "web_probe": {
+          "purpose": "Read the lazarus.day record page for each selected indicator, including its related reports and IOCs."
+        }
+      },
+      "lifecycle": {
+        "persistence": "opt-in",
+        "controls": [
+          "progress",
+          "cancel"
+        ],
+        "progress": "determinate"
+      }
+    }
+  ]
+}

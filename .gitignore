@@ -1,0 +1,3 @@
+node_modules/
+.selftest.mjs
+.selftest.cjs

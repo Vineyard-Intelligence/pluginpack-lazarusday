@@ -1,0 +1,276 @@
+// Lazarus Day IOC Search — keyword → the IOC nodes lazarus.day lists for it.
+//
+// This is the site's search box, made into a graph collector. `?q=` is a case-insensitive
+// substring match over the stored indicator value only (not report titles or actor names), and the
+// results are the site's own records — 15 per page, newest first. Each one becomes the concrete
+// node its category names, carrying the record URL and the site's first/last-seen dates, so the
+// analyst can pivot from it and can always get back to the page it came from.
+//
+// WHAT THIS DELIBERATELY DOES NOT DO: it does not invent an anchor node for the query. A search is
+// not an entity; a Campaign node named after "blockchain" would be a fabricated thing in the graph
+// that every later search would merge into. The results stand as themselves, which is also how the
+// Shodan Search plugin ships.
+import { definePlugin } from './sdk';
+import type { HostContext, RunResult } from './sdk';
+import { Pacer, fetchPage, isChallenge, searchUrl } from './fetch';
+import { parseSearchPage } from './ioc';
+import { nodeForItem } from './ioc';
+
+// The site also has a browsable `yara` category, but its `?q=` search never matches YARA rule
+// names (measured), and no YARA typepack is assumed to be installed. The category is therefore
+// not offered; a YARA row that ever does appear is skipped and counted, not silently dropped.
+const CATEGORIES = ['all', 'domain', 'ipv4', 'url', 'hash', 'email', 'wallet', 'asn'] as const;
+const PAGE_SIZE = 15;
+const KIND_LABEL: Record<string, [string, string]> = {
+    domain: ['domain', 'domains'],
+    ipv4: ['IPv4 address', 'IPv4 addresses'],
+    ipv6: ['IPv6 address', 'IPv6 addresses'],
+    url: ['URL', 'URLs'],
+    hash: ['hash', 'hashes'],
+    email: ['e-mail address', 'e-mail addresses'],
+    wallet: ['crypto address', 'crypto addresses'],
+    asn: ['ASN', 'ASNs'],
+};
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+export const lazarusSearch = definePlugin({
+    manifest: {
+        identifier: 'run.vineyard.plugins.lazarusday_search',
+        content_type: 'vineyard:plugin',
+        name: 'Lazarus Day IOC Search',
+        version: '1.0.0',
+        description:
+            'Searches the lazarus.day DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only (lazarus.day sends no CORS headers).',
+        icon: 'radar',
+        author: { name: 'VINEYARD', url: 'https://vineyard.run' },
+        license: 'Apache-2.0',
+        platforms: {
+            primary: 'desktop',
+            web: { runtime: 'sandbox-js', entry: 'dist/pack.mjs' },
+            desktop: { runtime: 'sandbox-js', entry: 'dist/pack.mjs' },
+        },
+        io: {
+            consumes: [],
+            produces: [
+                { typepack: 'run.vineyard.typepacks.infrastructure', category: 'infrastructure', name: 'domain' },
+                { typepack: 'run.vineyard.typepacks.infrastructure', category: 'infrastructure', name: 'ip_address' },
+                { typepack: 'run.vineyard.typepacks.infrastructure', category: 'web', name: 'url' },
+                { typepack: 'run.vineyard.typepacks.infrastructure', category: 'infrastructure', name: 'autonomous_system' },
+                { typepack: 'run.vineyard.typepacks.threat', category: 'threat', name: 'file_hash' },
+                { typepack: 'run.vineyard.typepacks.threat', category: 'threat', name: 'indicator' },
+                { typepack: 'run.vineyard.typepacks.identity', category: 'identity', name: 'email_address' },
+                { typepack: 'run.vineyard.typepacks.financial', category: 'financial', name: 'crypto_address' },
+            ],
+        },
+        params: {
+            type: 'object',
+            properties: {
+                query: {
+                    type: 'string',
+                    title: 'Search query',
+                    minLength: 1,
+                    description:
+                        'Keyword to search the indicator values for, e.g. "blockchain" or "kimsuky". The site matches a case-insensitive substring, so a domain, a hash prefix or a full value all work.',
+                },
+                category: {
+                    type: 'string',
+                    title: 'Category',
+                    enum: [...CATEGORIES],
+                    default: 'all',
+                    description: 'Restrict the search to one IOC category. "all" searches every category.',
+                },
+                pages: {
+                    type: 'integer',
+                    title: 'Pages',
+                    minimum: 1,
+                    maximum: 10,
+                    default: 1,
+                    description:
+                        'Result pages to read, 15 indicators each, newest first. One page is usually the right answer for a specific keyword; raise it for a broad one.',
+                },
+            },
+            required: ['query'],
+        },
+        scopes: {
+            graph: ['node:create'],
+            web_probe: {
+                purpose: 'Search lazarus.day’s public IOC index by keyword and read the result pages.',
+            },
+        },
+        lifecycle: { persistence: 'opt-in', controls: ['progress', 'cancel'], progress: 'determinate' },
+    },
+
+    async run(ctx: HostContext): Promise<RunResult> {
+        if (!ctx.net?.probe) {
+            return {
+                summary:
+                    'This plugin only runs in the Vineyard desktop app: lazarus.day sends no CORS headers, so a browser build cannot read its pages. Open the same project in the desktop app to run it.',
+                counts: { iocs: 0 },
+            };
+        }
+        if (!ctx.graph?.createNode) return { summary: 'Graph write access was not granted to this plugin', counts: { iocs: 0 } };
+
+        const query = String(ctx.params?.query ?? '').trim();
+        if (!query) return { summary: 'Enter a search keyword, e.g. "blockchain" or "kimsuky".', counts: { iocs: 0 } };
+
+        const asked = String(ctx.params?.category ?? 'all');
+        if (asked === 'yara') {
+            return {
+                summary:
+                    'YARA results are not staged yet — this pack covers the site’s other categories. The site’s YARA category is available on the web page.',
+                counts: { iocs: 0, skipped_yara: 0 },
+            };
+        }
+        const category = (CATEGORIES as readonly string[]).includes(asked) ? asked : 'all';
+        const requested = Math.max(1, Math.min(10, Math.trunc(Number(ctx.params?.pages ?? 1)) || 1));
+
+        const pacer = new Pacer();
+        const seen = new Set<string>();
+        const byKind: Record<string, number> = {};
+        let created = 0;
+        let unsupported = 0;
+        let blocked = 0;
+        let limited = 0;
+        let failed = 0;
+        let invalid = 0;
+        let yaraSkipped = 0;
+        let pagesRead = 0;
+        let total: number | null = null;
+        let stopped = false;
+
+        for (let page = 1; page <= requested; page++) {
+            if (ctx.signal?.aborted) {
+                stopped = true;
+                break;
+            }
+            ctx.progress?.set?.({
+                percent: Math.round(((page - 1) / requested) * 100),
+                message: `lazarus.day search: "${query}" (page ${page} of ${requested})`,
+            });
+
+            const res = await fetchPage(ctx, searchUrl(query, category, page), pacer);
+            if (ctx.signal?.aborted) {
+                stopped = true;
+                break;
+            }
+            if (res.error) {
+                failed++;
+                break;
+            }
+            if (res.truncated) {
+                // A truncated page is not a short page. Parsing it would report the rows it managed
+                // to carry as the whole answer.
+                failed++;
+                break;
+            }
+            if (isChallenge(res)) {
+                blocked++;
+                break;
+            }
+            if (res.status === 429) {
+                // Already retried once by fetchPage. A rate limit is not "no results".
+                limited++;
+                break;
+            }
+            // Past the last page the site answers 404 rather than an empty list — that is the end
+            // of the results, not a failure.
+            if (res.status === 404 && page > 1) break;
+            if (res.status !== 200) {
+                failed++;
+                break;
+            }
+
+            const parsed = parseSearchPage(res.body);
+            pagesRead++;
+            if (parsed.total != null) total = parsed.total;
+            if (!parsed.items.length) break;
+
+            for (const item of parsed.items) {
+                if (seen.has(item.path)) continue;
+                seen.add(item.path);
+                if (item.kind === 'unknown' && item.rawKind.toUpperCase() === 'YARA') {
+                    // Reached only through `all`. Stated, not silently dropped.
+                    yaraSkipped++;
+                    continue;
+                }
+                const draft = nodeForItem(item, `https://lazarus.day${item.path}`);
+                if (!draft) {
+                    unsupported++;
+                    continue;
+                }
+                try {
+                    await ctx.graph.createNode(draft);
+                    created++;
+                    byKind[item.kind] = (byKind[item.kind] ?? 0) + 1;
+                } catch {
+                    // A value the installed typepack's validators refuse must not abort the page.
+                    invalid++;
+                }
+            }
+
+            if (total != null && seen.size >= total) break;
+        }
+
+        ctx.progress?.set?.({ percent: 100 });
+        if (ctx.signal?.aborted) stopped = true;
+
+        const totalPages = total != null ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : null;
+        const parts: string[] = [];
+        if (created) {
+            const mix = Object.entries(byKind)
+                .sort((a, b) => b[1] - a[1])
+                .map(([kind, n]) => {
+                    const labels = KIND_LABEL[kind];
+                    return labels ? plural(n, labels[0], labels[1]) : `${n} ${kind}`;
+                })
+                .join(', ');
+            parts.push(`${stopped ? 'Stopped after' : 'Added'} ${plural(created, 'IoC', 'IoCs')} for "${query}"${mix ? ` (${mix})` : ''}`);
+            if (total != null) {
+                const coverage = totalPages != null && pagesRead < totalPages ? `, read ${pagesRead} of ${totalPages} pages` : '';
+                parts.push(`${plural(total, 'indicator', 'indicators')} ${total === 1 ? 'matches' : 'match'} in total${coverage}`);
+            }
+            parts.push(
+                'lazarus.day labels its IoCs as automatically extracted and warns they may include non-malicious data — treat a hit as “appears in DPRK reporting”, not as a confirmed verdict',
+            );
+        } else if (stopped) {
+            parts.push('Stopped before any result could be read');
+        } else if (!blocked && !limited && !failed) {
+            parts.push(
+                total === 0
+                    ? `lazarus.day lists no indicator matching "${query}" — a real negative from the site’s search, not a failed request`
+                    : `No indicators were returned for "${query}"`,
+            );
+        }
+        if (yaraSkipped) {
+            parts.push(`${plural(yaraSkipped, 'YARA rule result was', 'YARA rule results were')} skipped — YARA is not staged yet`);
+        }
+        if (unsupported) parts.push(`${plural(unsupported, 'result', 'results')} ${unsupported === 1 ? 'was' : 'were'} a category this pack cannot model`);
+        if (invalid) parts.push(`${invalid} value(s) were refused by the installed typepack and skipped`);
+        if (blocked) parts.push('lazarus.day answered with a bot challenge — the search was NOT answered; retry later');
+        if (limited) parts.push('lazarus.day rate-limited the search — those pages were NOT answered; wait and retry');
+        if (failed) parts.push(`${plural(failed, 'page request', 'page requests')} failed`);
+        if (!parts.length) parts.push('Nothing was read');
+
+        return {
+            summary: parts.join('. ') + '.',
+            counts: {
+                iocs: created,
+                total: total ?? 0,
+                pages: pagesRead,
+                domains: byKind.domain ?? 0,
+                ip_addresses: (byKind.ipv4 ?? 0) + (byKind.ipv6 ?? 0),
+                urls: byKind.url ?? 0,
+                hashes: byKind.hash ?? 0,
+                emails: byKind.email ?? 0,
+                wallets: byKind.wallet ?? 0,
+                asns: byKind.asn ?? 0,
+                skipped_yara: yaraSkipped,
+                unsupported,
+                invalid,
+                blocked,
+                limited,
+                failed,
+            },
+        };
+    },
+});
