@@ -1,40 +1,37 @@
-// Talking to lazarus.day, through the only capability that can.
+// Talking to lazarus.day through the narrowest capability that works.
 //
-// The site sends no `Access-Control-Allow-Origin`, so a browser fetch from the Vineyard web app
-// cannot read its HTML — this pack therefore uses `ctx.net.probe` (the desktop shell's anonymous
-// main-process fetch) rather than `ctx.net.fetch`, and is declared desktop-only. That is the same
-// trade the Ad Tags and Wayback packs make for the same reason.
+// ONE ENDPOINT, DECLARED IN THE MANIFEST: `https://lazarus.day/iocs`. The host bridge refuses any
+// request outside it — compared on the parsed origin and a path-segment boundary, so `/iocs` also
+// covers `/iocs/?q=` and `/iocs/<value>/` but not `/iocsomething` and not another host. The
+// install gate shows that one line before the analyst approves the pack.
 //
-// Three properties of the probe shape this file:
+// The site sends no `Access-Control-Allow-Origin`, so a plain browser fetch would be unreadable.
+// The desktop shell solves that for exactly the origins the open project's installed packs
+// declare: `desktop/src/main/net.ts` injects CORS headers for those origins only, in memory, for
+// the life of the project (`allowlist.ts` `setPackOrigins`). That is why this pack is desktop-only
+// and why it no longer asks for `web_probe` — an arbitrary-host probe was broader than the job,
+// which is one site. The endpoint list is the tighter mechanism, and it is the one the install gate
+// can actually show.
 //
-//   1. It does NOT follow redirects. lazarus.day answers 301 from http to https and from
-//      `/iocs/abcd` to `/iocs/abcd/` (no trailing slash), so a caller that ignores 3xx reads an
-//      empty body and calls a listed IOC "not found". Redirects are followed here, by hand.
-//   2. The body is capped and may be marked truncated. The pages this pack reads are 20–120 KB;
-//      the cap is 1.5 MB and a truncated page is reported as a failure rather than parsed as if
-//      complete.
-//   3. It is anonymous and quiet. Requests are paced (see Pacer) and a 429 is retried once, so a
-//      selection of twenty nodes does not read as a burst.
-import type { HostContext, SafeProbeResponse } from './sdk';
+// Requests carry no credential and no headers: `ctx.net.fetch` forces `credentials: "omit"`, and a
+// request with nothing to leak may follow a redirect. Redirects on this site stay on the same
+// origin (http → https, missing trailing slash); a redirect elsewhere would land on an origin with
+// no waiver and be unreadable.
+import type { HostContext, SafeResponse } from './sdk';
 
 export const BASE = 'https://lazarus.day';
-/** Far above any page this pack reads (the IOC index is ~90 KB); truncation is still checked. */
-export const MAX_BODY_BYTES = 1_500_000;
-const MAX_REDIRECTS = 4;
-const REQUEST_TIMEOUT_MS = 20_000;
+/** The one origin/path this pack is allowed to reach; mirrored by scopes.network in both plugins. */
+export const ENDPOINT = `${BASE}/iocs`;
 const RETRY_AFTER_MS = 2_000;
 
 export interface Page {
-    /** The URL asked for, before redirects. */
-    requested: string;
-    /** Where the response actually came from. */
+    /** The URL asked for. The browser may have followed a same-origin redirect. */
     url: string;
     status: number;
     headers: Record<string, string>;
     body: string;
-    truncated: boolean;
+    /** Set when nothing usable came back; `body` is empty then. */
     error?: string;
-    hops: number;
 }
 
 /**
@@ -99,46 +96,8 @@ export class Pacer {
     }
 }
 
-function emptyPage(requested: string, error: string): Page {
-    return { requested, url: requested, status: 0, headers: {}, body: '', truncated: false, error, hops: 0 };
-}
-
-/** One request, following redirects by hand. Never throws. */
-export async function probePage(ctx: HostContext, target: string, maxBytes = MAX_BODY_BYTES): Promise<Page> {
-    const probe = ctx.net?.probe;
-    if (!probe) return emptyPage(target, 'desktop network probe not available');
-
-    let url = target;
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-        let res: SafeProbeResponse;
-        try {
-            res = await probe(url, { method: 'GET', maxBytes, timeoutMs: REQUEST_TIMEOUT_MS });
-        } catch (e) {
-            return { ...emptyPage(target, String(e)), url, hops: hop };
-        }
-        if (res.error || res.status === 0) {
-            return { ...emptyPage(target, res.error || 'transport error'), url, hops: hop };
-        }
-        if (res.status >= 300 && res.status < 400 && res.redirectUrl) {
-            if (hop === MAX_REDIRECTS) return { ...emptyPage(target, 'redirect loop'), url, hops: hop };
-            try {
-                url = new URL(res.redirectUrl, url).toString();
-            } catch {
-                return { ...emptyPage(target, 'unparseable redirect target'), url, hops: hop };
-            }
-            continue;
-        }
-        return {
-            requested: target,
-            url,
-            status: res.status,
-            headers: res.headers ?? {},
-            body: res.body ?? '',
-            truncated: !!res.truncated,
-            hops: hop,
-        };
-    }
-    return { ...emptyPage(target, 'redirect loop'), url, hops: MAX_REDIRECTS };
+function failed(url: string, error: string): Page {
+    return { url, status: 0, headers: {}, body: '', error };
 }
 
 /**
@@ -165,23 +124,31 @@ export function isChallenge(page: Page): boolean {
     );
 }
 
-/** One retry for a rate limit or a transient server error; the caller decides what the final status means. */
-export async function fetchPage(
-    ctx: HostContext,
-    url: string,
-    pacer: Pacer,
-    maxBytes = MAX_BODY_BYTES,
-): Promise<Page> {
+/** One request through the declared endpoint, with one retry for a rate limit or a server error. */
+export async function fetchPage(ctx: HostContext, url: string, pacer: Pacer): Promise<Page> {
     await pacer.wait(ctx.signal);
-    if (ctx.signal?.aborted) return emptyPage(url, 'cancelled');
-    let page = await probePage(ctx, url, maxBytes);
+    if (ctx.signal?.aborted) return failed(url, 'cancelled');
+    const net = ctx.net;
+    if (!net?.fetch) return failed(url, 'network capability not granted');
+    const doFetch = net.fetch;
 
+    const once = async (): Promise<Page> => {
+        try {
+            const res: SafeResponse = await doFetch(url, { method: 'GET' });
+            const body = await res.text();
+            return { url, status: res.status, headers: res.headers ?? {}, body };
+        } catch (e) {
+            return failed(url, String(e));
+        }
+    };
+
+    let page = await once();
     if (page.status === 429 || page.status >= 500) {
         const retryAfter = Number(page.headers['retry-after'] ?? '');
         const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter * 1000, 10_000) : RETRY_AFTER_MS;
         await sleep(wait, ctx.signal);
-        if (ctx.signal?.aborted) return emptyPage(url, 'cancelled');
-        page = await probePage(ctx, url, maxBytes);
+        if (ctx.signal?.aborted) return failed(url, 'cancelled');
+        page = await once();
     }
     return page;
 }

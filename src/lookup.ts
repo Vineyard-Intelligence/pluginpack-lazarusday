@@ -12,7 +12,7 @@
 // other two digests. Those are the facts staged here. Nothing is inferred from a tag or a name.
 import { definePlugin } from './sdk';
 import type { GraphNode, HostContext, RunResult } from './sdk';
-import { BASE, Pacer, fetchPage, iocUrl, isChallenge } from './fetch';
+import { BASE, ENDPOINT, Pacer, fetchPage, iocUrl, isChallenge } from './fetch';
 import { lookupTargets, parseDetailPage } from './ioc';
 import type { IocDetail, Report } from './ioc';
 
@@ -92,9 +92,9 @@ export const lazarusLookup = definePlugin({
         identifier: 'run.vineyard.plugins.lazarusday_lookup',
         content_type: 'vineyard:plugin',
         name: 'lazarus.day IOC Lookup',
-        version: '1.0.1',
+        version: '1.1.0',
         description:
-            'Queries https://lazarus.day for each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only (lazarus.day sends no CORS headers).',
+            'Looks up each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record in lazarus.day’s public DPRK indicator index, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only (lazarus.day sends no CORS headers).',
         icon: 'crosshair',
         author: { name: 'VINEYARD', url: 'https://vineyard.run' },
         license: 'Apache-2.0',
@@ -143,21 +143,28 @@ export const lazarusLookup = definePlugin({
         },
         scopes: {
             graph: ['node:read', 'node:create', 'node:update', 'edge:create'],
-            web_probe: {
-                purpose: 'Read the lazarus.day record page for each selected indicator, including its related reports and IOCs.',
-            },
+            // Exactly one endpoint: the site's IOC pages. The host bridge refuses anything else,
+            // and the desktop shell waives CORS for this one origin while the pack is installed.
+            network: [
+                {
+                    endpoint: ENDPOINT,
+                    methods: ['GET'],
+                    purpose: 'Read the lazarus.day record page for each selected indicator, including its related reports and IOCs.',
+                },
+            ],
         },
         lifecycle: { persistence: 'opt-in', controls: ['progress', 'cancel'], progress: 'determinate' },
     },
 
     async run(ctx: HostContext): Promise<RunResult> {
-        if (!ctx.net?.probe) {
+        if (ctx.run.platform !== 'desktop') {
             return {
                 summary:
-                    'This plugin only runs in the Vineyard desktop app: lazarus.day sends no CORS headers, so a browser build cannot read its pages. Open the same project in the desktop app to run it.',
+                    'This plugin only runs in the Vineyard desktop app: lazarus.day sends no CORS headers, so the browser build cannot read its pages. Open the same project in the desktop app to run it.',
                 counts: { looked: 0 },
             };
         }
+        if (!ctx.net?.fetch) return { summary: 'Network access was not granted to this plugin', counts: { looked: 0 } };
         const graph = ctx.graph;
         if (!graph?.get || !graph.updateNode || !graph.createNode || !graph.createEdge) {
             return { summary: 'Graph read/write access was not granted to this plugin', counts: { looked: 0 } };
@@ -236,11 +243,6 @@ export const lazarusLookup = definePlugin({
                     break;
                 }
                 if (page.error) {
-                    failed++;
-                    failedHere = true;
-                    break;
-                }
-                if (page.truncated) {
                     failed++;
                     failedHere = true;
                     break;
