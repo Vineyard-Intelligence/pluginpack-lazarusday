@@ -1,4 +1,4 @@
-// Lazarus Day IOC Lookup — a selected indicator → its lazarus.day record, the reports that name it,
+// lazarus.day IOC Lookup — a selected indicator → its record on https://lazarus.day, the reports that name it,
 // and the related indicators the site lists beside it.
 //
 // The lookup is an EXACT RECORD, not a search: `/iocs/<value>/` answers 200 or 404 for one value,
@@ -91,10 +91,10 @@ export const lazarusLookup = definePlugin({
     manifest: {
         identifier: 'run.vineyard.plugins.lazarusday_lookup',
         content_type: 'vineyard:plugin',
-        name: 'Lazarus Day IOC Lookup',
-        version: '1.0.0',
+        name: 'lazarus.day IOC Lookup',
+        version: '1.0.1',
         description:
-            'Looks up each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record in the lazarus.day DPRK indicator index, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only (lazarus.day sends no CORS headers).',
+            'Queries https://lazarus.day for each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only (lazarus.day sends no CORS headers).',
         icon: 'crosshair',
         author: { name: 'VINEYARD', url: 'https://vineyard.run' },
         license: 'Apache-2.0',

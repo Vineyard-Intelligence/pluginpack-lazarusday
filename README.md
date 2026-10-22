@@ -1,16 +1,20 @@
 # pluginpack-lazarusday
 
-Reads [lazarus.day](https://lazarus.day/iocs/)'s public DPRK indicator index into a Vineyard graph:
-a **keyword search** over the index, and an **exact-record lookup** for indicators already on the
+Reads the public DPRK indicator index at **https://lazarus.day/iocs/** into a Vineyard graph: a
+**keyword search** over the index, and an **exact-record lookup** for indicators already on the
 canvas.
+
+**Data source:** every request this pack makes goes to `https://lazarus.day` and nowhere else. It
+reads the site's public HTML pages anonymously (no account, no credential, no cookies) and links
+every staged node back to the page it came from.
 
 Two plugins:
 
-- **Lazarus Day IOC Search** (`run.vineyard.plugins.lazarusday_search`) — takes a keyword (and an
+- **lazarus.day IOC Search** (`run.vineyard.plugins.lazarusday_search`) — takes a keyword (and an
   optional category and page count), searches `https://lazarus.day/iocs/?q=…`, and stages each
   match as the node its category names, carrying the record URL and the site's first/last-seen
   dates.
-- **Lazarus Day IOC Lookup** (`run.vineyard.plugins.lazarusday_lookup`) — takes selected Domain,
+- **lazarus.day IOC Lookup** (`run.vineyard.plugins.lazarusday_lookup`) — takes selected Domain,
   IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN nodes, fetches each one's
   exact record page, writes the record's dates and detail onto the node, adds each report that names
   it as a Campaign linked `reported in`, and optionally adds the related IPs and URLs the site lists

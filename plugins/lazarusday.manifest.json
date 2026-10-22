@@ -1,9 +1,9 @@
 {
   "identifier": "run.vineyard.pluginpacks.lazarusday",
   "content_type": "vineyard:pluginpack",
-  "name": "Lazarus Day",
-  "version": "1.0.0",
-  "description": "Searches and reads the lazarus.day DPRK indicator index: a keyword search that stages indicators as graph nodes, and an exact-record lookup that adds the reports naming a selected indicator. Desktop only.",
+  "name": "lazarus.day",
+  "version": "1.0.1",
+  "description": "Searches and reads https://lazarus.day's public DPRK indicator index: a keyword search that stages indicators as graph nodes, and an exact-record lookup that adds the reports naming a selected indicator. Desktop only.",
   "author": {
     "name": "VINEYARD",
     "url": "https://vineyard.run"
@@ -25,9 +25,9 @@
     {
       "identifier": "run.vineyard.plugins.lazarusday_search",
       "content_type": "vineyard:plugin",
-      "name": "Lazarus Day IOC Search",
-      "version": "1.0.0",
-      "description": "Searches the lazarus.day DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only (lazarus.day sends no CORS headers).",
+      "name": "lazarus.day IOC Search",
+      "version": "1.0.1",
+      "description": "Queries https://lazarus.day's public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only (lazarus.day sends no CORS headers).",
       "icon": "radar",
       "license": "Apache-2.0",
       "platforms": {
@@ -144,9 +144,9 @@
     {
       "identifier": "run.vineyard.plugins.lazarusday_lookup",
       "content_type": "vineyard:plugin",
-      "name": "Lazarus Day IOC Lookup",
-      "version": "1.0.0",
-      "description": "Looks up each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record in the lazarus.day DPRK indicator index, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only (lazarus.day sends no CORS headers).",
+      "name": "lazarus.day IOC Lookup",
+      "version": "1.0.1",
+      "description": "Queries https://lazarus.day for each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only (lazarus.day sends no CORS headers).",
       "icon": "crosshair",
       "license": "Apache-2.0",
       "platforms": {
