@@ -174,6 +174,96 @@ function ctxOnWeb(net, graph, params, selection = []) {
     check('lookup: no YARA/signature type is consumed', !lookup.manifest.io.consumes.some((t) => t.name === 'signature'));
 }
 
+// ================================================================ search: hash records
+const HASH_SHA256 = '24d004a104d4d54034dbcffc2a4b19a11f39008a575aa614ea04703480b1022c';
+const HASH_MD5 = 'db349b97c37d22f5ea1d1841e3c89eb4';
+
+function hashSearchPage(values) {
+    const articles = values
+        .map(
+            (v) => `<article>
+    <div><hgroup><h4><a href="/iocs/${v}/">${v}</a></h4><h5>HASH</h5></hgroup></div>
+    <div>First seen: 2026-10-21 • Last seen: 2026-10-21</div>
+</article>`,
+        )
+        .join('\n');
+    return `<p>${values.length} IoCs</p>
+<div id="list-view" class="view-container">
+${articles}
+</div>
+<div id="grid-view"></div>`;
+}
+
+{
+    // The list shows only the digest the record is keyed by; the record page has the file's MD5,
+    // SHA-1 and SHA-256. The node should carry all three, not just the one that was listed.
+    const graph = makeGraph();
+    const net = makeNet((url) =>
+        url.includes('?q=') ? { status: 200, body: hashSearchPage([HASH_SHA256]) } : { status: 200, body: fixture('detail-hash.html') },
+    );
+    const r = await search.run(RUN(net, graph, { query: HASH_SHA256 }));
+    check('search hash: the record page is fetched', net.calls.length === 2 && net.calls[1].url === `https://lazarus.day/iocs/${HASH_SHA256}/`);
+    const node = graph.created.find((n) => n.type === 'threat.file_hash');
+    check('search hash: one File Hash node', graph.created.length === 1 && !!node);
+    check('search hash: SHA-256 is the identity', node?.data.sha256 === HASH_SHA256);
+    check('search hash: MD5 filled from the record', node?.data.md5 === HASH_MD5);
+    check('search hash: SHA-1 filled from the record', node?.data.sha1 === 'e889544aff85ffaf8b0d0da705105dee7c97fe26');
+    check('search hash: a clean resolution reports no failure', !/could not be fetched|had no SHA-256|not resolved/.test(r.summary));
+}
+{
+    // The searched value is an MD5; the site returns the SHA-256 record. The node must be a File
+    // Hash (sha256 is required by the typepack), with the MD5 attached, not an MD5 Indicator.
+    const graph = makeGraph();
+    const net = makeNet((url) =>
+        url.includes('?q=') ? { status: 200, body: hashSearchPage([HASH_MD5]) } : { status: 200, body: fixture('detail-hash.html') },
+    );
+    const r = await search.run(RUN(net, graph, { query: HASH_MD5 }));
+    const node = graph.created.find((n) => n.type === 'threat.file_hash');
+    check('search hash: an MD5 result is promoted to a File Hash', !!node && node.data.sha256 === HASH_SHA256 && node.data.md5 === HASH_MD5);
+    check('search hash: no MD5-only Indicator is staged', !graph.created.some((n) => n.type === 'threat.indicator'));
+}
+{
+    const graph = makeGraph();
+    const net = makeNet((url) => (url.includes('?q=') ? { status: 200, body: hashSearchPage([HASH_SHA256]) } : { status: 404 }));
+    const r = await search.run(RUN(net, graph, { query: HASH_SHA256 }));
+    const node = graph.created.find((n) => n.type === 'threat.file_hash');
+    check(
+        'search hash: a failed record page falls back to the listed digest',
+        node?.data.sha256 === HASH_SHA256 && /could not be fetched/.test(r.summary),
+    );
+}
+{
+    // A challenge on the first record page stops resolution for the rest of the run; the remaining
+    // rows still produce nodes from their listed digest, and the summary accounts for both.
+    const other = 'b'.repeat(64);
+    const graph = makeGraph();
+    const net = makeNet((url) =>
+        url.includes('?q=') ? { status: 200, body: hashSearchPage([HASH_SHA256, other]) } : { status: 403, body: '<title>Just a moment...</title>' },
+    );
+    const r = await search.run(RUN(net, graph, { query: HASH_SHA256 }));
+    check('search hash: a challenge stops further record fetches', net.calls.length === 2);
+    check('search hash: the failed and skipped fetches are both stated', /could not be fetched/.test(r.summary) && /not resolved/.test(r.summary));
+    check('search hash: both rows still produce nodes', graph.created.length === 2);
+    check('search hash: no hash counters are returned', !('hashes_resolved' in r.counts) && !('hashes_unresolved' in r.counts) && !('hashes_skipped' in r.counts));
+}
+
+{
+    // A record that is only an MD5 (SHA1/SHA256 both "-") cannot be a file_hash: sha256 is required.
+    // It becomes an Indicator with indicator_type, and the run says why instead of calling it a
+    // failed lookup.
+    const md5 = '1b668cb3fcd7243e258ba4d9473d64af';
+    const detail = `<main class="container"><section><hgroup><h2>${md5}</h2><h3>Hash</h3></hgroup>
+<div><ul><li>MD5: ${md5}</li><li>SHA1: -</li><li>SHA256: -</li>
+<li>First Seen: 2026-10-20</li><li>Last Seen: 2026-10-20</li></ul></div></section></main>`;
+    const graph = makeGraph();
+    const net = makeNet((url) => (url.includes('?q=') ? { status: 200, body: hashSearchPage([md5]) } : { status: 200, body: detail }));
+    const r = await search.run(RUN(net, graph, { query: md5 }));
+    const node = graph.created.find((n) => n.type === 'threat.indicator');
+    check('search hash: a record without SHA-256 becomes an Indicator', node?.data.indicator_type === 'md5' && node?.data.value === md5);
+    check('search hash: no File Hash node is invented without SHA-256', !graph.created.some((n) => n.type === 'threat.file_hash'));
+    check('search hash: the missing SHA-256 is stated, not called a fetch failure', /had no SHA-256/.test(r.summary) && !/could not be fetched/.test(r.summary));
+}
+
 // ================================================================ lookup: domain
 {
     const graph = makeGraph({

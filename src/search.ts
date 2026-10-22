@@ -13,7 +13,8 @@
 import { definePlugin } from './sdk';
 import type { HostContext, RunResult } from './sdk';
 import { ENDPOINT, Pacer, fetchPage, isChallenge, searchUrl } from './fetch';
-import { parseSearchPage } from './ioc';
+import { parseSearchPage, parseDetailPage } from './ioc';
+import type { NodeDraft, SearchItem } from './ioc';
 import { nodeForItem } from './ioc';
 
 // The site also has a browsable `yara` category, but its `?q=` search never matches YARA rule
@@ -33,12 +34,86 @@ const KIND_LABEL: Record<string, [string, string]> = {
 };
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
+/** One hash result costs one extra request; a run stops resolving at this many and says so. */
+const MAX_HASH_LOOKUPS = 60;
+
+interface HashResolution {
+    lookups: number;
+    /** Records that were read and simply have no SHA-256 — staged as Indicators, not a failure. */
+    noSha256: number;
+    /** Record fetches that did not answer (error, challenge, rate limit). */
+    unresolved: number;
+    /** Records not attempted: the per-run cap, or resolution stopped after a failed fetch. */
+    skipped: number;
+    stopped: boolean;
+}
+
+/**
+ * THE LIST SHOWS ONE DIGEST; THE RECORD SHOWS THE FILE.
+ *
+ * A file-hash record is keyed by its SHA-256, and `?q=<md5>` reaches it through the alias — the
+ * search list then shows that SHA-256, while the record page lists the file's MD5, SHA-1 and
+ * SHA-256 together. Resolving the record page is what lets the staged node carry all three instead
+ * of only the digest the list happened to show. One request per hash result, paced with the rest,
+ * capped per run; a failure falls back to the listed digest rather than dropping the result.
+ */
+async function resolveHashItem(
+    ctx: HostContext,
+    item: SearchItem,
+    url: string,
+    pacer: Pacer,
+    state: HashResolution,
+): Promise<NodeDraft | null> {
+    const fallback = nodeForItem(item, url);
+    if (state.stopped) {
+        state.skipped++;
+        return fallback;
+    }
+    if (state.lookups >= MAX_HASH_LOOKUPS) {
+        state.skipped++;
+        return fallback;
+    }
+    state.lookups++;
+    const page = await fetchPage(ctx, url, pacer);
+    if (ctx.signal?.aborted) return fallback;
+    if (page.error || page.status === 429 || isChallenge(page)) {
+        state.unresolved++;
+        // A challenge or a rate limit applies to the rest of the run, not just this record.
+        state.stopped = true;
+        return fallback;
+    }
+    if (page.status !== 200) {
+        state.unresolved++;
+        return fallback;
+    }
+    const detail = parseDetailPage(page.body);
+    const listed = item.value.toLowerCase();
+    const sha256 = detail.sha256 ?? (/^[0-9a-f]{64}$/.test(listed) ? listed : '');
+    if (!sha256) {
+        state.noSha256++;
+        return fallback;
+    }
+    const first = item.firstSeen ?? detail.firstSeen;
+    const last = item.lastSeen ?? detail.lastSeen;
+    return {
+        type: 'threat.file_hash',
+        data: {
+            sha256,
+            ...(detail.md5 ? { md5: detail.md5 } : {}),
+            ...(detail.sha1 ? { sha1: detail.sha1 } : {}),
+            lazarus_day_url: url,
+            ...(first ? { lazarus_day_first_seen: first } : {}),
+            ...(last ? { lazarus_day_last_seen: last } : {}),
+        },
+    };
+}
+
 export const lazarusSearch = definePlugin({
     manifest: {
         identifier: 'run.vineyard.plugins.lazarusday_search',
         content_type: 'vineyard:plugin',
         name: 'lazarus.day IOC Search',
-        version: '1.1.3',
+        version: '1.2.0',
         description:
             'Searches lazarus.day’s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only.',
         icon: 'radar',
@@ -141,6 +216,7 @@ export const lazarusSearch = definePlugin({
         let failed = 0;
         let invalid = 0;
         let yaraSkipped = 0;
+        const hashState: HashResolution = { lookups: 0, noSha256: 0, unresolved: 0, skipped: 0, stopped: false };
         let pagesRead = 0;
         let total: number | null = null;
         let stopped = false;
@@ -194,7 +270,13 @@ export const lazarusSearch = definePlugin({
                     yaraSkipped++;
                     continue;
                 }
-                const draft = nodeForItem(item, `https://lazarus.day${item.path}`);
+                const url = `https://lazarus.day${item.path}`;
+                const draft =
+                    item.kind === 'hash' ? await resolveHashItem(ctx, item, url, pacer, hashState) : nodeForItem(item, url);
+                if (ctx.signal?.aborted) {
+                    stopped = true;
+                    break;
+                }
                 if (!draft) {
                     unsupported++;
                     continue;
@@ -247,6 +329,19 @@ export const lazarusSearch = definePlugin({
         }
         if (unsupported) parts.push(`${plural(unsupported, 'result', 'results')} ${unsupported === 1 ? 'was' : 'were'} a category this pack cannot model`);
         if (invalid) parts.push(`${invalid} value(s) were refused by the installed typepack and skipped`);
+        if (hashState.noSha256) {
+            parts.push(
+                `${plural(hashState.noSha256, 'hash record had', 'hash records had')} no SHA-256 and ${hashState.noSha256 === 1 ? 'was' : 'were'} staged as ${hashState.noSha256 === 1 ? 'an Indicator' : 'Indicators'}`,
+            );
+        }
+        if (hashState.unresolved) {
+            parts.push(`${plural(hashState.unresolved, 'hash record', 'hash records')} could not be fetched; the listed digest was used as-is`);
+        }
+        if (hashState.skipped) {
+            parts.push(
+                `${plural(hashState.skipped, 'hash record was', 'hash records were')} not resolved (cap ${MAX_HASH_LOOKUPS} per run, or resolution stopped after a failed record fetch)`,
+            );
+        }
         if (blocked) parts.push('lazarus.day answered with a bot challenge — the search was NOT answered; retry later');
         if (limited) parts.push('lazarus.day rate-limited the search — those pages were NOT answered; wait and retry');
         if (failed) parts.push(`${plural(failed, 'page request', 'page requests')} failed`);
