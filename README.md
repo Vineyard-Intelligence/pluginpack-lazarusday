@@ -37,7 +37,7 @@ Measured 2026-10-22, so the numbers are a snapshot rather than a promise:
 | --- | --- |
 | Indicators | 32,656 |
 | Categories | `ipv4`, `hash`, `domain`, `url`, `email`, `wallet`, `asn`, and `yara` (browsable, but `?q=` never matches YARA names) |
-| Search | `?q=` — case-insensitive **substring of the indicator value only** |
+| Search | `?q=` — case-insensitive **substring of the indicator value only**; a hash query also finds the file record through its other digests |
 | Ordering | Newest first (`date_desc`) |
 | Page size | 15; `?page=N`, and a page past the end answers **404** |
 | Record page | `/iocs/<value>/` — exact lookup, 404 when unlisted |
@@ -82,6 +82,15 @@ Each result becomes the concrete node its category names:
 
 Every node carries `lazarus_day_url` and, when the row has them, `lazarus_day_first_seen` /
 `lazarus_day_last_seen`.
+
+**Hash results are resolved through their record page.** The search list shows only the digest the
+record is keyed by — a file hash is keyed by its SHA-256, so searching an MD5 returns that SHA-256
+record — while the record page carries the file's MD5, SHA-1 and SHA-256 together. The pack fetches
+that one page per hash result (paced like every other request) and stages a `threat.file_hash` with
+all three digests. A record with no SHA-256 cannot be a `file_hash` — the type requires it — so it
+stays a `threat.indicator` with its digest type (`md5` / `sha1`), and the run says why. Resolution is
+capped at 60 hash records per run; beyond the cap, or after a failed record fetch, the listed digest
+is used as-is and the summary says so.
 
 **No anchor node is invented for the query.** A search is not an entity; a Campaign named after
 “blockchain” would be a fabricated thing that every later search would merge into. The results stand
@@ -139,7 +148,8 @@ page can list over a hundred addresses; the run says how many were left out.
   ordinary bot-detection script (`challenge-platform`) is injected into every page including 404s,
   so it is deliberately *not* a challenge marker — matching it turned “not listed” into “blocked”
   during development.
-- **Politeness.** Requests are paced at 350 ms; a 429 or 5xx gets one retry (honouring
+- **Politeness.** Every request — including the record page fetched for a hash result — is paced
+  at 350 ms; a 429 or 5xx gets one retry (honouring
   `Retry-After` when present). The fetch carries no credential (`credentials: "omit"` is forced by
   the host) and no headers; same-origin redirects such as a missing trailing slash are followed by
   the browser, and a redirect to another origin has no waiver and cannot be read.

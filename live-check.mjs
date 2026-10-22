@@ -90,6 +90,31 @@ console.log('search: q=blockchain (page 1)');
     console.log(`  sample: ${sample.join(' | ')}`);
 }
 
+console.log('search: an MD5 keyword resolves to the file record’s digests');
+{
+    const graph = memoryGraph();
+    const r = await search.run(ctx(graph, { query: '6518c05b81110a62f22dea455b67be4d', pages: 1 }));
+    console.log(`  summary: ${r.summary}`);
+    const node = graph.created.find((n) => n.type === 'threat.file_hash');
+    expect(!!node, 'a File Hash node was staged');
+    expect(node?.data.sha256 === '2705441758889528e6cf333182799b2e51b458546e7706858e8789eaedb52562', 'SHA-256 identity from the record');
+    expect(node?.data.md5 === '6518c05b81110a62f22dea455b67be4d', 'MD5 from the record');
+    expect(node?.data.sha1 === '05658ea514450872431999d2cf3b76fc44320ccd', 'SHA-1 from the record');
+    expect(!/could not be fetched|had no SHA-256/.test(r.summary), 'no resolution failure reported');
+}
+{
+    // An MD5-only record (SHA1/SHA256 are "-") cannot become a file_hash; it must be an Indicator
+    // carrying the digest type, and the summary must say why it is not a File Hash.
+    const graph = memoryGraph();
+    const r = await search.run(ctx(graph, { query: '1b668cb3fcd7243e258ba4d9473d64af', pages: 1 }));
+    console.log(`  summary: ${r.summary}`);
+    const node = graph.created.find((n) => n.type === 'threat.indicator');
+    expect(node?.data.value === '1b668cb3fcd7243e258ba4d9473d64af', 'the MD5 is staged as an Indicator');
+    expect(node?.data.indicator_type === 'md5', 'indicator_type is md5');
+    expect(!graph.created.some((n) => n.type === 'threat.file_hash'), 'no file_hash is invented without SHA-256');
+    expect(/had no SHA-256/.test(r.summary), 'the missing SHA-256 is stated');
+}
+
 console.log('lookup: a listed domain (blockchain-newtech.com)');
 {
     const graph = memoryGraph({
