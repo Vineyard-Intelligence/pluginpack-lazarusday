@@ -53,9 +53,11 @@ npm run live    # reads the live site; not part of build
 
 ## Licence
 
-Pack code: Apache-2.0. The indicator data belongs to
-[@lazarusholic](https://x.com/lazarusholic)'s [lazarus.day](https://lazarus.day/about/); this pack
-reads it anonymously and read-only. Not affiliated with the site.
+Pack code: Apache-2.0 (see `LICENSE`). The site's content and IoC data are
+© 2021–2026 [@lazarusholic](https://x.com/lazarusholic), licensed
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); this pack reads them at runtime and
+links every node to its source page. `test-fixtures/` contains trimmed copies of that content for
+parser tests and remains under CC BY-SA 4.0 (see `NOTICE`). Not affiliated with the site.
 
 Published in the Vineyard registry as `run.vineyard.pluginpacks.lazarusday`
 ([entry](https://github.com/Vineyard-Intelligence/registry/blob/main/packs/run.vineyard.pluginpacks.lazarusday.json)).

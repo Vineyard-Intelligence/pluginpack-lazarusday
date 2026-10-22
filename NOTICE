@@ -1,0 +1,11 @@
+pluginpack-lazarusday
+
+This repository's code is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party content
+-------------------
+
+test-fixtures/*.html are trimmed copies of pages from https://lazarus.day, captured 2026-10-22 for
+parser tests. That content is © 2021–2026 lazarusholic, licensed CC BY-SA 4.0
+(https://creativecommons.org/licenses/by-sa/4.0/), and is not covered by the Apache-2.0 license.
+Scripts and stylesheet links were removed from the captures; nothing else was edited.
