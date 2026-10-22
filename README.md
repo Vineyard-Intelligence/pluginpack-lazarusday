@@ -1,184 +1,61 @@
 # pluginpack-lazarusday
 
-Reads the public DPRK indicator index at **https://lazarus.day/iocs/** into a Vineyard graph: a
-**keyword search** over the index, and an **exact-record lookup** for indicators already on the
+Searches and reads the public DPRK indicator index at **https://lazarus.day** into a Vineyard
+graph: a keyword search over the index, and an exact-record lookup for indicators already on the
 canvas.
 
-**Data source:** every request this pack makes goes to `https://lazarus.day` — the public DPRK
-indicator index maintained by [@lazarusholic](https://x.com/lazarusholic) — and nowhere else. The
-manifest declares exactly one network endpoint, `https://lazarus.day/iocs`, and the host bridge
-refuses any other origin or path — there is no arbitrary-host probe. The pack reads the site's
-public HTML pages anonymously (no account, no credential, no cookies) and links every staged node
-back to the page it came from.
+Data source: [lazarus.day](https://lazarus.day), maintained by
+[@lazarusholic](https://x.com/lazarusholic). The pack declares one network endpoint,
+`https://lazarus.day/iocs`, and reads the public pages anonymously. Desktop only: the site sends no
+CORS headers, and the desktop shell waives cross-origin protection for the endpoint a pack declares.
 
-Two plugins:
+## Plugins
 
-- **lazarus.day IOC Search** (`run.vineyard.plugins.lazarusday_search`) — takes a keyword (and an
-  optional category and page count), searches `https://lazarus.day/iocs/?q=…`, and stages each
-  match as the node its category names, carrying the record URL and the site's first/last-seen
-  dates.
-- **lazarus.day IOC Lookup** (`run.vineyard.plugins.lazarusday_lookup`) — takes selected Domain,
-  IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN nodes, fetches each one's
-  exact record page, writes the record's dates and detail onto the node, adds each report that names
-  it as a Campaign linked `reported in`, and optionally adds the related IPs and URLs the site lists
-  for a Domain or ASN.
+- **lazarus.day IOC Search** (`run.vineyard.plugins.lazarusday_search`) — keyword → indicator nodes.
+  Params: `query` (required), `category` (one of seven; default `all`), `pages` (1–10, default 1).
+- **lazarus.day IOC Lookup** (`run.vineyard.plugins.lazarusday_lookup`) — selected indicators → their
+  records, related reports as Campaigns, and optionally related IOCs. Params:
+  `include_related_iocs` (default on), `max_related_iocs` (default 50, max 200).
 
-Desktop only. lazarus.day sends no `Access-Control-Allow-Origin`, so the browser build cannot read
-its HTML. On desktop, the shell waives cross-origin protection for exactly the origins the open
-project's installed packs declare (`desktop/src/main/allowlist.ts`), so the same one declared
-endpoint becomes readable — and only that one. Both plugins refuse in the web build with that
-explanation instead of failing with an opaque CORS error.
+## Search
 
-## What the source actually is
+`?q=` is a case-insensitive substring match on the indicator value — 15 results per page, newest
+first. Results become Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN or
+Indicator nodes, each carrying `lazarus_day_url` and the site's first/last-seen dates.
 
-Measured 2026-10-22, so the numbers are a snapshot rather than a promise:
+Hash results are resolved through their record page, so a File Hash carries the file's MD5, SHA-1
+and SHA-256 together. A record with no SHA-256 stays an Indicator with its digest type. Resolution is
+capped at 60 hash records per run; the rest fall back to the listed digest.
 
-| Fact | Value |
-| --- | --- |
-| Indicators | 32,656 |
-| Categories | `ipv4`, `hash`, `domain`, `url`, `email`, `wallet`, `asn`, and `yara` (browsable, but `?q=` never matches YARA names) |
-| Search | `?q=` — case-insensitive **substring of the indicator value only**; a hash query also finds the file record through its other digests |
-| Ordering | Newest first (`date_desc`) |
-| Page size | 15; `?page=N`, and a page past the end answers **404** |
-| Record page | `/iocs/<value>/` — exact lookup, 404 when unlisted |
-| API | None found. The only JSON is the per-entity `/json/network/` graph data, whose names are truncated to 30 characters |
-| CORS | None |
-| robots.txt | `Disallow: /manager/`, `/admin/`, `/api/`; `/iocs` is allowed |
-| Every page carries | “These IoCs were automatically extracted using regular expressions or an LLM and may include non-malicious data.” |
+## Lookup
 
-Three consequences shaped the code:
+Each selected node is read as an exact record (`/iocs/<value>/`): its dates and detail are written
+onto the node, and every report that names it becomes a Campaign linked `reported in`, with the
+report URL, author, date and tags kept. A Domain or ASN can also add the IPs and URLs the site lists
+for it. A 404 means the site does not list the value — not a failed lookup.
 
-1. **The list view is the section to parse.** The page renders the same fifteen rows three times
-   (table, list, grid). The table truncates every value to 30 characters with a literal `…`; the
-   list view is the same data untruncated, and grid view is cut off at the parser so a future change
-   there cannot double every row.
-2. **Values are read from the href, not the anchor text.** E-mails are Cloudflare-obfuscated in the
-   text (`[email protected]`), and the site encodes the value **twice** in the path. Both quirks
-   are why `parseSearchPage` decodes the `href` twice and why `iocPath()` encodes twice; a
-   singly-encoded path answers 404 (verified, not inferred).
-3. **A 404 is an answer.** For the lookup it means “the site does not list this value” — a real
-   negative. For page 2+ of a search it means “past the last page”. Neither is counted as a failed
-   request, which is the difference between a clean result and a silently incomplete one.
+## Notes
 
-## Search: keyword → indicator nodes
+- lazarus.day flags its IoCs as automatically extracted and warns they may include non-malicious
+  data. A hit means “appears in DPRK reporting”, not a confirmed verdict.
+- YARA rules are not staged: the site's `?q=` does not match YARA names, and no YARA typepack is
+  assumed.
+- Requests are paced at 350 ms; a 429 or 5xx gets one retry.
+- Report → Campaign is this pack's model; tags do not become Threat Actors.
 
-`?q=` matches a substring of the stored value. It does **not** search report titles, actors or
-tags: `q=Kimsuky` returns one indicator (a value containing “kimsuky”), not the site's hundreds of
-reports that mention Kimsuky. So this plugin is a way to discover indicators, and the Lookup plugin is the way to get reporting for
-a known one.
+## Build
 
-Each result becomes the concrete node its category names:
-
-| Site category | Node type | Notes |
-| --- | --- | --- |
-| Domain | `infrastructure.domain` | lower-cased |
-| IPv4 / IPv6 | `infrastructure.ip_address` | `version` set |
-| URL | `web.url` | trailing slash preserved |
-| E-mail | `identity.email_address` | recovered from the href |
-| Wallet | `financial.crypto_address` | chain is not stated by the site, so `currency` is left empty |
-| ASN | `infrastructure.autonomous_system` | `AS149440` → `149440` |
-| Hash (SHA-256) | `threat.file_hash` | |
-| Hash (MD5 / SHA-1) | `threat.indicator` | `file_hash` requires `sha256`, so a shorter digest has no legal `file_hash` node |
-
-Every node carries `lazarus_day_url` and, when the row has them, `lazarus_day_first_seen` /
-`lazarus_day_last_seen`.
-
-**Hash results are resolved through their record page.** The search list shows only the digest the
-record is keyed by — a file hash is keyed by its SHA-256, so searching an MD5 returns that SHA-256
-record — while the record page carries the file's MD5, SHA-1 and SHA-256 together. The pack fetches
-that one page per hash result (paced like every other request) and stages a `threat.file_hash` with
-all three digests. A record with no SHA-256 cannot be a `file_hash` — the type requires it — so it
-stays a `threat.indicator` with its digest type (`md5` / `sha1`), and the run says why. Resolution is
-capped at 60 hash records per run; beyond the cap, or after a failed record fetch, the listed digest
-is used as-is and the summary says so.
-
-**No anchor node is invented for the query.** A search is not an entity; a Campaign named after
-“blockchain” would be a fabricated thing that every later search would merge into. The results stand
-as themselves, which is also how the Shodan Search plugin ships. Nodes that already exist on the
-canvas are reused by the host's normal identity de-duplication.
-
-Params: `query` (required), `category` (one of the seven; default `all`), `pages` (1–10, default
-1; 15 indicators each). The run states the total match count and how many pages of it were read.
-
-## Lookup: exact record → metadata, reports, pivots
-
-There is no search in this path. `/iocs/<value>/` is an exact record lookup, so one request per
-node and no risk of matching `11.2.3.45` for a selected `1.2.3.4`. A File Hash tries its digests
-strongest-first (`sha256` → `sha1` → `md5`) because the site may index any one of them.
-
-What is written:
-
-| Source fact | Where it goes |
-| --- | --- |
-| First/last seen | `lazarus_day_first_seen` / `lazarus_day_last_seen` |
-| IP country, coordinates, ASN operator | `lazarus_day_country`, `lazarus_day_location`, `lazarus_day_asn_name`; `asn` (declared integer) |
-| IP's ASN | an `infrastructure.autonomous_system` node + `announced by` |
-| MD5 / SHA-1 on a hash record | `md5` / `sha1` on the File Hash node |
-| ASN page's operator | `autonomous_system_name` on the ASN node |
-| Each related report | a `threat.campaign` node + `reported in`; the record URL, author, date and tags are kept |
-| Domain's resolved IPs / URLs, ASN's associated IPs | `infrastructure.ip_address` / `web.url` nodes + `resolves to`, `hosts`, `announces` |
-
-The report → Campaign mapping is this pack's model, borrowed from the OTX pack: a report is not
-literally a campaign, but Campaign is the typepack's node for “a coordinated set of malicious
-activities” with a name, a date and a description, and it is where analysts put reporting. The
-report's own URL stays on the node (`lazarus_day_url`) and the edge carries `report_date` and
-`author`, so the claim is traceable to the page.
-
-**Actors are deliberately not inferred from tags.** The site's tags mix actor names, malware
-families and generic terms (`#NPM`, `#PyPI`, `#MoonstoneSleet`). Turning every tag into a Threat
-Actor node would be a guess dressed as a finding.
-
-Params: `include_related_iocs` (default on) and `max_related_iocs` (default 50, max 200). An ASN
-page can list over a hundred addresses; the run says how many were left out.
-
-## Limits, stated rather than hidden
-
-- **YARA is out of scope for now.** The site has a browsable YARA category, but its `?q=` search
-  never matches YARA rule names — `q=lazarus_relayshell&category=yara` returns 0 — and this pack
-  does not assume a YARA typepack is installed. It therefore does not offer the category, and it
-  skips (and counts) a YARA row if one ever does appear in a result page. YARA rules are still
-  browsable on the site itself.
-- **The source warns about its own data.** Every page says its IoCs are regex/LLM-extracted and may
-  include non-malicious values. Both plugins repeat that in the run summary. A hit means “appears in
-  DPRK reporting”, not “confirmed malicious”.
-- **Related reports are what the page rendered.** The site shows the reports inline; the run counts
-  what it saw and compares it to the page's own counter, and caps staging at 50 per run.
-- **A bot challenge is not an empty result.** A 403/503, or a real challenge body, is counted as
-  `blocked` and named in the summary. Cloudflare's
-  ordinary bot-detection script (`challenge-platform`) is injected into every page including 404s,
-  so it is deliberately *not* a challenge marker — matching it turned “not listed” into “blocked”
-  during development.
-- **Politeness.** Every request — including the record page fetched for a hash result — is paced
-  at 350 ms; a 429 or 5xx gets one retry (honouring
-  `Retry-After` when present). The fetch carries no credential (`credentials: "omit"` is forced by
-  the host) and no headers; same-origin redirects such as a missing trailing slash are followed by
-  the browser, and a redirect to another origin has no waiver and cannot be read.
-
-## Checks
-
-```
+```sh
 npm install
-npm run build       # bundle + manifest + parser selftest + functional tests
-npm run typecheck
-npm run live        # reads the live site; not part of build
+npm run build   # bundle + manifest + parser selftest + functional tests
+npm run live    # reads the live site; not part of build
 ```
 
-- `src/selftest.ts` — parsers against real bytes in `test-fixtures/` (search page, empty search,
-  domain/IP/hash/ASN/e-mail/URL records, the live 404 page), plus node mapping, lookup targets,
-  double-encoding and challenge detection.
-- `test-plugin.mjs` — the `run()` bodies with a mocked network endpoint and graph: what is
-  requested, what is written, and what the summary says for a negative, a challenge and a digest
-  fallback.
-- `live-check.mjs` — the same bundle against the real site, with a memory graph; asserts shape, not
-  specific indicators.
+## Licence
 
-## Data and licence
+Pack code: Apache-2.0. The indicator data belongs to
+[@lazarusholic](https://x.com/lazarusholic)'s [lazarus.day](https://lazarus.day/about/); this pack
+reads it anonymously and read-only. Not affiliated with the site.
 
-Pack code: Apache-2.0 (see `LICENSE`). The indicator data belongs to
-[@lazarusholic](https://x.com/lazarusholic)’s [lazarus.day](https://lazarus.day/about/); this pack
-reads it anonymously and read-only, and links every staged node back to its record page. Not
-affiliated with the site.
-
-Published in the Vineyard registry as `run.vineyard.pluginpacks.lazarusday`, pinned to the
-manifest commit in
-[`packs/run.vineyard.pluginpacks.lazarusday.json`](https://github.com/Vineyard-Intelligence/registry/blob/main/packs/run.vineyard.pluginpacks.lazarusday.json).
+Published in the Vineyard registry as `run.vineyard.pluginpacks.lazarusday`
+([entry](https://github.com/Vineyard-Intelligence/registry/blob/main/packs/run.vineyard.pluginpacks.lazarusday.json)).
