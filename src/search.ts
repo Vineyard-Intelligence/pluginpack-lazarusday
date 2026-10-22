@@ -1,4 +1,4 @@
-// Lazarus Day IOC Search — keyword → the IOC nodes lazarus.day lists for it.
+// lazarus.day IOC Search — keyword → the IOC nodes https://lazarus.day lists for it.
 //
 // This is the site's search box, made into a graph collector. `?q=` is a case-insensitive
 // substring match over the stored indicator value only (not report titles or actor names), and the
@@ -37,10 +37,10 @@ export const lazarusSearch = definePlugin({
     manifest: {
         identifier: 'run.vineyard.plugins.lazarusday_search',
         content_type: 'vineyard:plugin',
-        name: 'Lazarus Day IOC Search',
-        version: '1.0.0',
+        name: 'lazarus.day IOC Search',
+        version: '1.0.1',
         description:
-            'Searches the lazarus.day DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only (lazarus.day sends no CORS headers).',
+            'Queries https://lazarus.day\'s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only (lazarus.day sends no CORS headers).',
         icon: 'radar',
         author: { name: 'VINEYARD', url: 'https://vineyard.run' },
         license: 'Apache-2.0',

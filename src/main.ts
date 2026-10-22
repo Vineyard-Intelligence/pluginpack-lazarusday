@@ -1,4 +1,4 @@
-// The Lazarus Day pack — two views of one public dataset.
+// The lazarus.day pack — two views of one public dataset (https://lazarus.day/iocs/).
 //
 // Search answers "what does this site know about <keyword>"; Lookup answers "what does this site
 // know about <this exact indicator>". They share the parsers and the probe wrapper, and nothing
@@ -12,9 +12,9 @@ import { lazarusSearch } from './search';
 export default definePluginPack({
     identifier: 'run.vineyard.pluginpacks.lazarusday',
     content_type: 'vineyard:pluginpack',
-    name: 'Lazarus Day',
-    version: '1.0.0',
+    name: 'lazarus.day',
+    version: '1.0.1',
     description:
-        'Searches and reads the lazarus.day DPRK indicator index: a keyword search that stages indicators as graph nodes, and an exact-record lookup that adds the reports naming a selected indicator. Desktop only.',
+        'Searches and reads https://lazarus.day\'s public DPRK indicator index: a keyword search that stages indicators as graph nodes, and an exact-record lookup that adds the reports naming a selected indicator. Desktop only.',
     plugins: [lazarusSearch, lazarusLookup],
 });
