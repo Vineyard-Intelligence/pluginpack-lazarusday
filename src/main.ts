@@ -14,7 +14,7 @@ export default definePluginPack({
     identifier: 'run.vineyard.pluginpacks.lazarusday',
     content_type: 'vineyard:pluginpack',
     name: 'lazarus.day',
-    version: '1.1.0',
+    version: '1.1.1',
     description:
         'Searches and reads lazarus.day (https://lazarus.day), the public DPRK indicator index: a keyword search that stages indicators as graph nodes, and an exact-record lookup that adds the reports naming a selected indicator. Desktop only.',
     plugins: [lazarusSearch, lazarusLookup],
