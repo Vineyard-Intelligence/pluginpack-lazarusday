@@ -38,7 +38,7 @@ export const lazarusSearch = definePlugin({
         identifier: 'run.vineyard.plugins.lazarusday_search',
         content_type: 'vineyard:plugin',
         name: 'lazarus.day IOC Search',
-        version: '1.1.2',
+        version: '1.1.3',
         description:
             'Searches lazarus.day’s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only.',
         icon: 'radar',
@@ -77,7 +77,7 @@ export const lazarusSearch = definePlugin({
                     title: 'Category',
                     enum: [...CATEGORIES],
                     default: 'all',
-                    description: 'Restrict the search to one IOC category. "all" searches every category.',
+                    description: 'Restrict the search to one IOC category. "all" searches every category. Default: all.',
                 },
                 pages: {
                     type: 'integer',
@@ -86,7 +86,7 @@ export const lazarusSearch = definePlugin({
                     maximum: 10,
                     default: 1,
                     description:
-                        'Result pages to read, 15 indicators each, newest first. One page is usually the right answer for a specific keyword; raise it for a broad one.',
+                        'Result pages to read, 15 indicators each, newest first. One page is usually the right answer for a specific keyword; raise it for a broad one. Default: 1 (maximum 10).',
                 },
             },
             required: ['query'],

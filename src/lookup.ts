@@ -92,7 +92,7 @@ export const lazarusLookup = definePlugin({
         identifier: 'run.vineyard.plugins.lazarusday_lookup',
         content_type: 'vineyard:plugin',
         name: 'lazarus.day IOC Lookup',
-        version: '1.1.2',
+        version: '1.1.3',
         description:
             'Looks up each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record in lazarus.day’s public DPRK indicator index, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only.',
         icon: 'crosshair',
@@ -128,7 +128,7 @@ export const lazarusLookup = definePlugin({
                     title: 'Also add related IOCs',
                     default: true,
                     description:
-                        'For a selected Domain, add the IPs it resolved to and the URLs the site lists on it; for a selected ASN, add the associated IPs. Off means only the record itself and its reports.',
+                        'For a selected Domain, add the IPs it resolved to and the URLs the site lists on it; for a selected ASN, add the associated IPs. Default: on; off means only the record itself and its reports.',
                 },
                 max_related_iocs: {
                     type: 'integer',
@@ -137,7 +137,7 @@ export const lazarusLookup = definePlugin({
                     maximum: MAX_RELATED,
                     default: DEFAULT_RELATED,
                     description:
-                        'Most related IOCs to add per selected Domain or ASN. An ASN page can list over a hundred addresses; the run says how many were left out.',
+                        `Most related IOCs to add per selected Domain or ASN. An ASN page can list over a hundred addresses; the run says how many were left out. Default: ${DEFAULT_RELATED} (maximum ${MAX_RELATED}).`,
                 },
             },
         },
