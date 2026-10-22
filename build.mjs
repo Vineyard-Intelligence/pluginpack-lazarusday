@@ -1,0 +1,67 @@
+#!/usr/bin/env node
+/**
+ * Bundle src/main.ts (+ the local copy of the SDK) into dist/pack.mjs, then regenerate the manifest
+ * from the bundle.
+ *
+ * The SDK is inlined on purpose: the module is fetched by URL and runs in a worker with no import
+ * map, so any bare specifier left in it would fail to resolve.
+ *
+ * Usage: node build.mjs
+ */
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const outDir = join(here, 'dist');
+mkdirSync(outDir, { recursive: true });
+mkdirSync(join(here, 'plugins'), { recursive: true });
+
+execFileSync(
+    'npx',
+    [
+        'esbuild',
+        join(here, 'src', 'main.ts'),
+        '--bundle',
+        '--format=esm',
+        '--target=es2022',
+        '--platform=browser',
+        '--minify',
+        '--legal-comments=inline',
+        '--log-level=warning',
+        `--outfile=${join(outDir, 'pack.mjs')}`,
+    ],
+    { stdio: 'inherit', cwd: here },
+);
+
+console.log('Built dist/pack.mjs');
+
+// ---- plugins/lazarusday.manifest.json ----------------------------------------------------
+//
+// Generated from the bundle rather than hand-written. The manifest and the code state the same
+// facts twice — identifier, version, io types, scopes — and a hand-maintained copy drifts the
+// moment one of them changes. The registry pins a commit and CI re-fetches the manifest, so a
+// drifted manifest describes code that does something else.
+const pack = (await import(join(outDir, 'pack.mjs'))).default;
+// `author` is a PACK-level field; the schema rejects it on a nested plugin. It stays in the source
+// manifests because definePlugin's type carries it and it documents the plugin in place.
+const member = ({ author, ...m }) => m;
+
+const first = pack.plugins[0].manifest;
+const manifest = {
+    identifier: pack.identifier,
+    content_type: 'vineyard:pluginpack',
+    name: pack.name,
+    version: pack.version,
+    description: pack.description,
+    author: first.author,
+    license: first.license,
+    icon: 'radar',
+    platforms: first.platforms,
+    plugins: pack.plugins.map((p) => member(p.manifest)),
+};
+
+const manifestPath = join(here, 'plugins', 'lazarusday.manifest.json');
+writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+console.log(`Wrote plugins/lazarusday.manifest.json (${manifest.plugins.length} plugins, v${manifest.version})`);
