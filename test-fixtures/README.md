@@ -20,3 +20,10 @@ The last one is not filler: `not-found.html` contains `challenge-platform` (Clou
 bot-detection script into every page, and it lands inside the first 4 KB of this short page). An
 earlier challenge detector matched that string and classified every 404 as a bot challenge; the
 `src/selftest.ts` case for it is the regression test.
+
+## Licence
+
+These files are trimmed copies of pages from lazarus.day, captured 2026-10-22 for parser tests. The
+content is © 2021–2026 lazarusholic, licensed CC BY-SA 4.0
+(https://creativecommons.org/licenses/by-sa/4.0/), and is not covered by this repository's
+Apache-2.0 licence. See `../NOTICE`.
