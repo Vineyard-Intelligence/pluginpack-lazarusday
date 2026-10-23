@@ -2,7 +2,7 @@
   "identifier": "run.vineyard.pluginpacks.lazarusday",
   "content_type": "vineyard:pluginpack",
   "name": "lazarus.day",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Searches and reads lazarus.day (https://lazarus.day), the public DPRK indicator index by @lazarusholic (https://x.com/lazarusholic): keyword search stages matches as graph nodes, and exact-record lookup adds the reports naming them. Desktop only.",
   "author": {
     "name": "VINEYARD",
@@ -10,6 +10,7 @@
   },
   "license": "Apache-2.0",
   "icon": "radar",
+  "thumbnail_url": "assets/thumbnail.png",
   "platforms": {
     "primary": "desktop",
     "web": {
@@ -25,8 +26,8 @@
     {
       "identifier": "run.vineyard.plugins.lazarusday_search",
       "content_type": "vineyard:plugin",
-      "name": "lazarus.day IOC Search",
-      "version": "1.3.0",
+      "name": "lazarus.day IoC Search",
+      "version": "1.4.0",
       "description": "Searches lazarus.day’s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only.",
       "icon": "radar",
       "license": "Apache-2.0",
@@ -109,7 +110,7 @@
               "asn"
             ],
             "default": "all",
-            "description": "Restrict the search to one IOC category. \"all\" searches every category. Default: all."
+            "description": "Restrict the search to one IoC category. \"all\" searches every category. Default: all."
           },
           "pages": {
             "type": "integer",
@@ -134,7 +135,7 @@
             "methods": [
               "GET"
             ],
-            "purpose": "Search lazarus.day’s public IOC index by keyword and read the result pages."
+            "purpose": "Search lazarus.day’s public IoC index by keyword and read the result pages."
           }
         ]
       },
@@ -150,8 +151,8 @@
     {
       "identifier": "run.vineyard.plugins.lazarusday_lookup",
       "content_type": "vineyard:plugin",
-      "name": "lazarus.day IOC Lookup",
-      "version": "1.3.0",
+      "name": "lazarus.day IoC Lookup",
+      "version": "1.4.0",
       "description": "Looks up each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record in lazarus.day’s public DPRK indicator index, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only.",
       "icon": "crosshair",
       "license": "Apache-2.0",
@@ -232,17 +233,17 @@
         "properties": {
           "include_related_iocs": {
             "type": "boolean",
-            "title": "Also add related IOCs",
+            "title": "Also add related IoCs",
             "default": true,
             "description": "For a selected Domain, add the IPs it resolved to and the URLs the site lists on it; for a selected ASN, add the associated IPs. Default: on; off means only the record itself and its reports."
           },
           "max_related_iocs": {
             "type": "integer",
-            "title": "Related IOC limit",
+            "title": "Related IoC limit",
             "minimum": 1,
             "maximum": 200,
             "default": 50,
-            "description": "Most related IOCs to add per selected Domain or ASN. An ASN page can list over a hundred addresses; the run says how many were left out. Default: 50 (maximum 200)."
+            "description": "Most related IoCs to add per selected Domain or ASN. An ASN page can list over a hundred addresses; the run says how many were left out. Default: 50 (maximum 200)."
           }
         }
       },
@@ -259,7 +260,7 @@
             "methods": [
               "GET"
             ],
-            "purpose": "Read the lazarus.day record page for each selected indicator, including its related reports and IOCs."
+            "purpose": "Read the lazarus.day record page for each selected indicator, including its related reports and IoCs."
           }
         ]
       },

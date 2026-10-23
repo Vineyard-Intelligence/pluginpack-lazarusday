@@ -1,4 +1,4 @@
-// lazarus.day IOC Search — keyword → the IOC nodes https://lazarus.day lists for it.
+// lazarus.day IoC Search — keyword → the IoC nodes https://lazarus.day lists for it.
 //
 // This is the site's search box, made into a graph collector. `?q=` is a case-insensitive
 // substring match over the stored indicator value only (not report titles or actor names), and the
@@ -112,8 +112,8 @@ export const lazarusSearch = definePlugin({
     manifest: {
         identifier: 'run.vineyard.plugins.lazarusday_search',
         content_type: 'vineyard:plugin',
-        name: 'lazarus.day IOC Search',
-        version: '1.3.0',
+        name: 'lazarus.day IoC Search',
+        version: '1.4.0',
         description:
             'Searches lazarus.day’s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only.',
         icon: 'radar',
@@ -152,7 +152,7 @@ export const lazarusSearch = definePlugin({
                     title: 'Category',
                     enum: [...CATEGORIES],
                     default: 'all',
-                    description: 'Restrict the search to one IOC category. "all" searches every category. Default: all.',
+                    description: 'Restrict the search to one IoC category. "all" searches every category. Default: all.',
                 },
                 pages: {
                     type: 'integer',
@@ -168,13 +168,13 @@ export const lazarusSearch = definePlugin({
         },
         scopes: {
             graph: ['node:create'],
-            // Exactly one endpoint: the site's IOC pages. The host bridge refuses anything else,
+            // Exactly one endpoint: the site's IoC pages. The host bridge refuses anything else,
             // and the desktop shell waives CORS for this one origin while the pack is installed.
             network: [
                 {
                     endpoint: ENDPOINT,
                     methods: ['GET'],
-                    purpose: 'Search lazarus.day’s public IOC index by keyword and read the result pages.',
+                    purpose: 'Search lazarus.day’s public IoC index by keyword and read the result pages.',
                 },
             ],
         },

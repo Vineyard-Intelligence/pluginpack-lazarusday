@@ -1,4 +1,4 @@
-// lazarus.day IOC Lookup — a selected indicator → its record on https://lazarus.day, the reports that name it,
+// lazarus.day IoC Lookup — a selected indicator → its record on https://lazarus.day, the reports that name it,
 // and the related indicators the site lists beside it.
 //
 // The lookup is an EXACT RECORD, not a search: `/iocs/<value>/` answers 200 or 404 for one value,
@@ -6,7 +6,7 @@
 // indicator"), never a failed request. That matters more than it sounds — a substring search would
 // match a listed `11.2.3.45` for the selected `1.2.3.4` and stage somebody else's record.
 //
-// WHAT THE SITE ADDS: the IOC index alone is a list of values. The record page is what makes it
+// WHAT THE SITE ADDS: the IoC index alone is a list of values. The record page is what makes it
 // intelligence — the reports (with author, date and tags) that mention the exact value, plus for a
 // domain the IPs it resolved to and the URLs on it, for an IP its ASN and location, for a hash the
 // other two digests. Those are the facts staged here. Nothing is inferred from a tag or a name.
@@ -91,8 +91,8 @@ export const lazarusLookup = definePlugin({
     manifest: {
         identifier: 'run.vineyard.plugins.lazarusday_lookup',
         content_type: 'vineyard:plugin',
-        name: 'lazarus.day IOC Lookup',
-        version: '1.3.0',
+        name: 'lazarus.day IoC Lookup',
+        version: '1.4.0',
         description:
             'Looks up each selected Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address or ASN as an exact record in lazarus.day’s public DPRK indicator index, writes the record’s dates and detail onto the node, adds each report that names it as a Campaign linked “reported in”, and optionally adds the IPs and URLs the site lists for a Domain or ASN. Desktop only.',
         icon: 'crosshair',
@@ -125,31 +125,31 @@ export const lazarusLookup = definePlugin({
             properties: {
                 include_related_iocs: {
                     type: 'boolean',
-                    title: 'Also add related IOCs',
+                    title: 'Also add related IoCs',
                     default: true,
                     description:
                         'For a selected Domain, add the IPs it resolved to and the URLs the site lists on it; for a selected ASN, add the associated IPs. Default: on; off means only the record itself and its reports.',
                 },
                 max_related_iocs: {
                     type: 'integer',
-                    title: 'Related IOC limit',
+                    title: 'Related IoC limit',
                     minimum: 1,
                     maximum: MAX_RELATED,
                     default: DEFAULT_RELATED,
                     description:
-                        `Most related IOCs to add per selected Domain or ASN. An ASN page can list over a hundred addresses; the run says how many were left out. Default: ${DEFAULT_RELATED} (maximum ${MAX_RELATED}).`,
+                        `Most related IoCs to add per selected Domain or ASN. An ASN page can list over a hundred addresses; the run says how many were left out. Default: ${DEFAULT_RELATED} (maximum ${MAX_RELATED}).`,
                 },
             },
         },
         scopes: {
             graph: ['node:read', 'node:create', 'node:update', 'edge:create'],
-            // Exactly one endpoint: the site's IOC pages. The host bridge refuses anything else,
+            // Exactly one endpoint: the site's IoC pages. The host bridge refuses anything else,
             // and the desktop shell waives CORS for this one origin while the pack is installed.
             network: [
                 {
                     endpoint: ENDPOINT,
                     methods: ['GET'],
-                    purpose: 'Read the lazarus.day record page for each selected indicator, including its related reports and IOCs.',
+                    purpose: 'Read the lazarus.day record page for each selected indicator, including its related reports and IoCs.',
                 },
             ],
         },
@@ -387,7 +387,7 @@ export const lazarusLookup = definePlugin({
                     (named.length ? ` — ${named.join('; ')}` : ''),
             );
             if (reportsAdded) parts.push(`${plural(reportsAdded, 'report', 'reports')} added as Campaigns linked "reported in"`);
-            if (relatedAdded) parts.push(`${plural(relatedAdded, 'related IOC', 'related IOCs')} added from the record pages`);
+            if (relatedAdded) parts.push(`${plural(relatedAdded, 'related IoC', 'related IoCs')} added from the record pages`);
             parts.push(
                 'lazarus.day labels its IoCs as automatically extracted and warns they may include non-malicious data — a hit means “appears in DPRK reporting”, not a confirmed verdict',
             );
@@ -400,7 +400,7 @@ export const lazarusLookup = definePlugin({
         }
         if (notListed && listed) parts.push(`${notListed} of the looked-up indicator(s) were not in the index`);
         if (reportsDropped) parts.push(`${plural(reportsDropped, 'report', 'reports')} ${reportsDropped === 1 ? 'was' : 'were'} not added — over the ${MAX_REPORTS}-per-run cap, or the site's counter exceeded the reports it rendered`);
-        if (relatedDropped) parts.push(`${plural(relatedDropped, 'related IOC', 'related IOCs')} ${relatedDropped === 1 ? 'was' : 'were'} left out (limit ${maxRelated})`);
+        if (relatedDropped) parts.push(`${plural(relatedDropped, 'related IoC', 'related IoCs')} ${relatedDropped === 1 ? 'was' : 'were'} left out (limit ${maxRelated})`);
         if (unsupported) parts.push(`${plural(unsupported, 'selected node is', 'selected nodes are')} a type this pack does not look up`);
         if (invalid) parts.push(`${plural(invalid, 'value was', 'values were')} refused by the installed typepack and skipped`);
         if (blocked) parts.push('lazarus.day answered with a bot challenge — those lookups were NOT answered; retry later');

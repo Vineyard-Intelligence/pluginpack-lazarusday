@@ -126,7 +126,7 @@ console.log('lookup: a listed domain (blockchain-newtech.com)');
     expect(r.counts.failed === 0, 'no request failed');
     expect(graph.updates.length === 1 && graph.updates[0].id === 'd1', 'the selected node was enriched');
     expect(r.counts.reports > 0, `${r.counts.reports} report campaign(s)`);
-    expect(r.counts.related_iocs > 0, `${r.counts.related_iocs} related IOC(s)`);
+    expect(r.counts.related_iocs > 0, `${r.counts.related_iocs} related IoC(s)`);
     const campaign = graph.created.find((n) => n.type === 'threat.campaign');
     if (campaign) console.log(`  sample campaign: ${campaign.data.campaign_name}`);
 }

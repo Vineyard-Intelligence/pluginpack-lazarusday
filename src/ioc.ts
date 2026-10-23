@@ -2,9 +2,9 @@
 //
 // Two pages matter:
 //
-//   * the LIST page (`/iocs/?q=…`) — one `<article>` per IOC in the list view, each with the value,
+//   * the LIST page (`/iocs/?q=…`) — one `<article>` per IoC in the list view, each with the value,
 //     its type, and the first/last-seen dates the site has for it;
-//   * the IOC page (`/iocs/<value>/`) — the same record plus its category-specific detail (an IP's
+//   * the IoC page (`/iocs/<value>/`) — the same record plus its category-specific detail (an IP's
 //     ASN, a domain's resolved IPs, a hash's MD5/SHA-1/SHA-256) and the reports that mention it.
 //
 // Everything here is pure: no ctx, no fetch. That is what makes the fixtures in test-fixtures/
@@ -84,7 +84,7 @@ export function parseSearchPage(html: string): SearchPage {
         const raw = /href="\/iocs\/([^"]+)"/.exec(row);
         if (!raw) continue;
         // The attribute is `/iocs/<encoded>/`; the final slash is the route separator, not part of
-        // the value — a URL IOC that itself ends in "/" still encodes that slash as %252F.
+        // the value — a URL IoC that itself ends in "/" still encodes that slash as %252F.
         const segment = raw[1].replace(/\/$/, '');
         const value = decodeSegment(segment);
         if (!value) continue;
@@ -166,7 +166,7 @@ function iocLinks(inner: string): string[] {
 const flagEmoji = /[\u{1F1E6}-\u{1F1FF}\u{1F3F4}\u{E0067}-\u{E007F}]/gu;
 
 /**
- * Parse one IOC page.
+ * Parse one IoC page.
  *
  * The page is split at the `Related Reports` heading rather than at `</main>`: the details and the
  * metrics sit above it and the timeline below, and a single slice would have to re-derive that
@@ -280,7 +280,7 @@ export function parseDetailPage(html: string): IocDetail {
 
 // ---- values → node drafts ------------------------------------------------------------------
 
-/** The part of a node draft that is about the IOC itself, before provenance is attached. */
+/** The part of a node draft that is about the IoC itself, before provenance is attached. */
 export interface NodeDraft {
     type: string;
     data: Record<string, unknown>;

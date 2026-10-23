@@ -326,7 +326,7 @@ ${articles}
     await lookup.run(RUN(net, graph, { include_related_iocs: false }, ['d1', 'd2']));
     check('lookup: campaigns are shared across seeds in one run', graph.created.filter((n) => n.type === 'threat.campaign').length === 5);
     check('lookup: both seeds link to them', graph.edges.filter((e) => e.label === 'reported in').length === 10);
-    check('lookup: related IOCs can be turned off', !graph.created.some((n) => n.type === 'web.url'));
+    check('lookup: related IoCs can be turned off', !graph.created.some((n) => n.type === 'web.url'));
 }
 {
     const graph = makeGraph({ d1: { id: 'd1', type: 'infrastructure.domain', data: { domain_name: 'nope.example' } } });

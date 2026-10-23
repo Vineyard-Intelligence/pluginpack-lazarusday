@@ -14,10 +14,10 @@ declares.
 
 ## Plugins
 
-- **lazarus.day IOC Search** (`run.vineyard.plugins.lazarusday_search`) — keyword → indicator nodes.
+- **lazarus.day IoC Search** (`run.vineyard.plugins.lazarusday_search`) — keyword → indicator nodes.
   Params: `query` (required), `category` (one of seven; default `all`), `pages` (1–10, default 1).
-- **lazarus.day IOC Lookup** (`run.vineyard.plugins.lazarusday_lookup`) — selected indicators → their
-  records, related reports as Campaigns, and optionally related IOCs. Params:
+- **lazarus.day IoC Lookup** (`run.vineyard.plugins.lazarusday_lookup`) — selected indicators → their
+  records, related reports as Campaigns, and optionally related IoCs. Params:
   `include_related_iocs` (default on), `max_related_iocs` (default 50, max 200).
 
 ## Search
@@ -59,8 +59,9 @@ npm run live    # reads the live site; not part of build
 Pack code: Apache-2.0 (see `LICENSE`). The site's content and IoC data are
 © 2021–2026 [@lazarusholic](https://x.com/lazarusholic), licensed
 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); this pack reads them at runtime and
-links every node to its source page. `test-fixtures/` contains trimmed copies of that content for
-parser tests and remains under CC BY-SA 4.0 (see `NOTICE`). Not affiliated with the site.
+links every node to its source page. `test-fixtures/` contains trimmed copies of that content and
+`assets/thumbnail.png` is a resized crop of the site's artwork; both remain under CC BY-SA 4.0 (see
+`NOTICE`). Not affiliated with the site.
 
 Published in the Vineyard registry as `run.vineyard.pluginpacks.lazarusday`
 ([entry](https://github.com/Vineyard-Intelligence/registry/blob/main/packs/run.vineyard.pluginpacks.lazarusday.json)).
