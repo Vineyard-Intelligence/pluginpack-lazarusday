@@ -6,11 +6,8 @@ canvas.
 
 Data source: [lazarus.day](https://lazarus.day), maintained by
 [@lazarusholic](https://x.com/lazarusholic). The pack declares one network endpoint,
-`https://lazarus.day/iocs`, and reads the public pages anonymously. Every request — including each
-page of a paginated search — carries `utm_source=vineyard` so the site's logs can see where the
-traffic came from; the record URLs stored on graph nodes are kept clean. Desktop only: the site sends
-no CORS headers, and the desktop shell waives cross-origin protection for the endpoint a pack
-declares.
+`https://lazarus.day/iocs`, and reads the public pages anonymously. Desktop only: the site sends no
+CORS headers, and the desktop shell waives cross-origin protection for the endpoint a pack declares.
 
 ## Plugins
 
