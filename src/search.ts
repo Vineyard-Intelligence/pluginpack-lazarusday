@@ -113,7 +113,7 @@ export const lazarusSearch = definePlugin({
         identifier: 'run.vineyard.plugins.lazarusday_search',
         content_type: 'vineyard:plugin',
         name: 'lazarus.day IoC Search',
-        version: '1.4.0',
+        version: '1.4.1',
         description:
             'Searches lazarus.day’s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only.',
         icon: 'radar',
