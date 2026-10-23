@@ -54,7 +54,7 @@ const eq = (actual: unknown, expected: unknown, msg: string) =>
     eq(page.items, [], 'empty search: no items');
 }
 
-// ---- IOC pages -----------------------------------------------------------------------------
+// ---- IoC pages -----------------------------------------------------------------------------
 {
     const d = parseDetailPage(fixture('detail-domain.html'));
     eq(d.kind, 'domain', 'domain: category');
@@ -64,7 +64,7 @@ const eq = (actual: unknown, expected: unknown, msg: string) =>
     eq(d.firstSeen, '2023-12-08', 'domain: first seen');
     eq(d.lastSeen, '2024-05-28', 'domain: last seen');
     eq(d.reportCount, 5, 'domain: related-report counter');
-    eq(d.relatedIocCount, 2, 'domain: related-IOC counter');
+    eq(d.relatedIocCount, 2, 'domain: related-IoC counter');
     eq(d.relatedReports.length, 5, 'domain: one report per timeline block');
 
     const first = d.relatedReports[0];

@@ -37,7 +37,7 @@ export interface Page {
 }
 
 /**
- * The path the site uses for one IOC record.
+ * The path the site uses for one IoC record.
  *
  * The value is encoded TWICE on purpose: the site's own links are `/iocs/https%253A%252F…/`, and a
  * singly-encoded path answers 404 (measured, not inferred — `https%3A%2F%2F…` 404s while
@@ -125,7 +125,7 @@ function failed(url: string, error: string): Page {
  * Measured on 2026-10-22, lazarus.day answered every request this pack's paths made with 200 (or
  * 404 for an unlisted value) and no challenge; this exists because the failure mode when that
  * changes is the bad one — a challenge page has no `#list-view`, so a parser that ignores it
- * reports "0 IoCs", which reads as a definitive negative about an IOC rather than a blocked
+ * reports "0 IoCs", which reads as a definitive negative about an IoC rather than a blocked
  * request.
  *
  * The generic string "challenge-platform" is deliberately NOT a marker: Cloudflare's bot-detection

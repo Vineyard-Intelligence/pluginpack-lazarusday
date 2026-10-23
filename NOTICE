@@ -9,3 +9,7 @@ test-fixtures/*.html are trimmed copies of pages from https://lazarus.day, captu
 parser tests. That content is © 2021–2026 lazarusholic, licensed CC BY-SA 4.0
 (https://creativecommons.org/licenses/by-sa/4.0/), and is not covered by the Apache-2.0 license.
 Scripts and stylesheet links were removed from the captures; nothing else was edited.
+
+assets/thumbnail.png is a resized and cropped derivative of artwork from https://lazarus.day,
+© 2021–2026 lazarusholic, licensed CC BY-SA 4.0. It is used as this pack's card thumbnail and is
+not covered by the Apache-2.0 license.

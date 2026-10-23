@@ -58,6 +58,7 @@ const manifest = {
     author: first.author,
     license: first.license,
     icon: 'radar',
+    ...(pack.thumbnail_url ? { thumbnail_url: pack.thumbnail_url } : {}),
     platforms: first.platforms,
     plugins: pack.plugins.map((p) => member(p.manifest)),
 };

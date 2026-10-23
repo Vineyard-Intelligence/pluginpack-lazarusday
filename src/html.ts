@@ -62,9 +62,9 @@ export function textOf(html: string): string {
 }
 
 /**
- * A URL path segment the site wrote for an IOC, decoded back to the value it names.
+ * A URL path segment the site wrote for an IoC, decoded back to the value it names.
  *
- * TWICE, because that is how the site encodes: an IOC value of `https://x/a` is linked as
+ * TWICE, because that is how the site encodes: an IoC value of `https://x/a` is linked as
  * `/iocs/https%253A%252F%252Fx%252Fa/`, and `/iocs/helpdesk%2540…/` for an e-mail. One decode
  * leaves `%3A` and `%40` (`https%3A%2F%2F…`), which is the site's stored form, not the value. A
  * value that itself contains a percent-escape survives the round trip: `%20` becomes `%2520` and

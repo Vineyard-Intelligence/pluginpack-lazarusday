@@ -292,6 +292,12 @@ export interface VineyardPluginPack {
     name: string;
     version: string;
     description?: string;
+    /**
+     * Repo-relative path to the pack's card thumbnail (e.g. `assets/thumbnail.png`). The app
+     * resolves it ONLY against the pinned commit — `cdn.jsdelivr.net/gh/<repo>@<ref>/<path>` or
+     * `raw.githubusercontent.com/<repo>/<ref>/<path>` — never as an arbitrary URL.
+     */
+    thumbnail_url?: string;
     plugins: VineyardPlugin[];
 }
 export function definePluginPack(pack: VineyardPluginPack): VineyardPluginPack {
