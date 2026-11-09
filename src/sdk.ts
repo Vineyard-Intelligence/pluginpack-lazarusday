@@ -291,6 +291,7 @@ export interface VineyardPluginPack {
     content_type?: 'vineyard:pluginpack';
     name: string;
     version: string;
+    summary?: string;
     description?: string;
     /**
      * Repo-relative path to the pack's card thumbnail (e.g. `assets/thumbnail.png`). The app
