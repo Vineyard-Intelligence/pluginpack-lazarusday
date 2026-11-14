@@ -1,8 +1,9 @@
 # test-fixtures
 
-Real pages from [lazarus.day](https://lazarus.day/iocs/), captured 2026-10-22 and trimmed to the
-sections the parsers read. `<script>` blocks and stylesheet `<link>`s were removed; nothing else was
-edited, because the point of these files is to be the markup the regexes were written against.
+Real pages from [lazarus.day](https://lazarus.day/iocs/), captured 2026-10-22 (the two wallet
+records 2026-11-14) and trimmed to the sections the parsers read. `<script>` blocks and stylesheet
+`<link>`s were removed; nothing else was edited, because the point of these files is to be the
+markup the regexes were written against.
 
 | File | Page |
 | --- | --- |
@@ -14,6 +15,8 @@ edited, because the point of these files is to be the markup the regexes were wr
 | `detail-asn.html` | `/iocs/AS149440/` — organisation and 118 associated IPs |
 | `detail-email.html` | an e-mail record — Cloudflare-obfuscated `<h2>` |
 | `detail-url.html` | `/iocs/https%253A%252F%252Fcubedesign.co.kr%252Fnews/` — double-encoded URL record |
+| `detail-wallet-checksummed.html` | `/iocs/0x8d53903625b8e839b9DF4bd28B0EFb1CD6b8639A/` — one EVM wallet's checksummed record, 1 report |
+| `detail-wallet-lower.html` | `/iocs/0x8d53903625b8e839b9df4bd28b0efb1cd6b8639a/` — the same address in lower case: a separate record, other dates, another report |
 | `not-found.html` | the live 404 page, kept because it carries Cloudflare's JSD script |
 
 The last one is not filler: `not-found.html` contains `challenge-platform` (Cloudflare injects the
@@ -23,7 +26,8 @@ earlier challenge detector matched that string and classified every 404 as a bot
 
 ## Licence
 
-These files are trimmed copies of pages from lazarus.day, captured 2026-10-22 for parser tests. The
+These files are trimmed copies of pages from lazarus.day, captured 2026-10-22 and 2026-11-14 for
+parser tests. The
 content is © 2021–2026 lazarusholic, licensed CC BY-SA 4.0
 (https://creativecommons.org/licenses/by-sa/4.0/), and is not covered by this repository's
 Apache-2.0 licence. See `../NOTICE`.

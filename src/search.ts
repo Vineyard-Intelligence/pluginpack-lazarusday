@@ -15,7 +15,7 @@ import type { HostContext, RunResult } from './sdk';
 import { ENDPOINT, Pacer, fetchPage, isChallenge, searchUrl, withSource } from './fetch';
 import { parseSearchPage, parseDetailPage } from './ioc';
 import type { NodeDraft, SearchItem } from './ioc';
-import { nodeForItem } from './ioc';
+import { CRYPTO_ADDRESS, mergeWalletDraft, nodeForItem, walletKey } from './ioc';
 
 // The site also has a browsable `yara` category, but its `?q=` search never matches YARA rule
 // names (measured), and no YARA typepack is assumed to be installed. The category is therefore
@@ -115,7 +115,7 @@ export const lazarusSearch = definePlugin({
         name: 'lazarus.day IoC Search',
         version: '1.4.2',
         description:
-            'Searches lazarus.day’s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. Matching is a case-insensitive substring of the indicator value. Desktop only.',
+            'Searches lazarus.day’s public DPRK indicator index by keyword and adds each match as the node its category names — Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN — carrying the record URL and first/last-seen dates. A Crypto Address gets the network its format settles, or is marked as not established. Matching is a case-insensitive substring of the indicator value. Desktop only.',
         icon: 'radar',
         author: { name: 'VINEYARD', url: 'https://vineyard.run' },
         license: 'Apache-2.0',
@@ -134,7 +134,7 @@ export const lazarusSearch = definePlugin({
                 { typepack: 'run.vineyard.typepacks.threat', category: 'threat', name: 'file_hash' },
                 { typepack: 'run.vineyard.typepacks.threat', category: 'threat', name: 'indicator' },
                 { typepack: 'run.vineyard.typepacks.identity', category: 'identity', name: 'email_address' },
-                { typepack: 'run.vineyard.typepacks.financial', category: 'financial', name: 'crypto_address' },
+                { typepack: 'run.vineyard.typepacks.cryptocurrency', category: 'cryptocurrency', name: 'crypto_address' },
             ],
         },
         params: {
@@ -215,6 +215,9 @@ export const lazarusSearch = definePlugin({
         let limited = 0;
         let failed = 0;
         let invalid = 0;
+        let walletRefused = 0;
+        let walletSpellings = 0;
+        const wallets = new Map<string, Record<string, unknown>>();
         let yaraSkipped = 0;
         const hashState: HashResolution = { lookups: 0, noSha256: 0, unresolved: 0, skipped: 0, stopped: false };
         let pagesRead = 0;
@@ -281,13 +284,28 @@ export const lazarusSearch = definePlugin({
                     unsupported++;
                     continue;
                 }
+                const key = draft.type === CRYPTO_ADDRESS ? walletKey(draft.data) : null;
+                const earlier = key != null ? wallets.get(key) : undefined;
                 try {
+                    if (earlier) {
+                        // Another spelling of a wallet already added: the same node, written again
+                        // with the merged fields, and not counted twice.
+                        const merged = mergeWalletDraft(earlier, draft.data);
+                        await ctx.graph.createNode({ type: draft.type, data: merged });
+                        wallets.set(key!, merged);
+                        walletSpellings++;
+                        continue;
+                    }
                     await ctx.graph.createNode(draft);
+                    if (key != null) wallets.set(key, draft.data);
                     created++;
                     byKind[item.kind] = (byKind[item.kind] ?? 0) + 1;
                 } catch {
                     // A value the installed typepack's validators refuse must not abort the page.
                     invalid++;
+                    // Counted apart because the usual cause is the project, not the value: the
+                    // Cryptocurrency type pack missing, or older than the `network` written.
+                    if (draft.type === CRYPTO_ADDRESS) walletRefused++;
                 }
             }
 
@@ -328,7 +346,17 @@ export const lazarusSearch = definePlugin({
             parts.push(`${plural(yaraSkipped, 'YARA rule result was', 'YARA rule results were')} skipped — YARA is not staged yet`);
         }
         if (unsupported) parts.push(`${plural(unsupported, 'result', 'results')} ${unsupported === 1 ? 'was' : 'were'} a category this pack cannot model`);
-        if (invalid) parts.push(`${invalid} value(s) were refused by the installed typepack and skipped`);
+        if (invalid - walletRefused) parts.push(`${invalid - walletRefused} value(s) were refused by the installed typepack and skipped`);
+        if (walletSpellings) {
+            parts.push(
+                `${plural(walletSpellings, 'crypto address was', 'crypto addresses were')} listed again under another spelling of the same address (checksummed and lower case, say) and merged into one node`,
+            );
+        }
+        if (walletRefused) {
+            parts.push(
+                `${plural(walletRefused, 'crypto address was', 'crypto addresses were')} refused — install or update the Cryptocurrency type pack (run.vineyard.typepacks.cryptocurrency) in this project and run the search again`,
+            );
+        }
         if (hashState.noSha256) {
             parts.push(
                 `${plural(hashState.noSha256, 'hash record had', 'hash records had')} no SHA-256 and ${hashState.noSha256 === 1 ? 'was' : 'were'} staged as ${hashState.noSha256 === 1 ? 'an Indicator' : 'Indicators'}`,
@@ -363,6 +391,8 @@ export const lazarusSearch = definePlugin({
                 skipped_yara: yaraSkipped,
                 unsupported,
                 invalid,
+                wallets_refused: walletRefused,
+                wallet_spellings_merged: walletSpellings,
                 blocked,
                 limited,
                 failed,

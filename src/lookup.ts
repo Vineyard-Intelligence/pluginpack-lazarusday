@@ -13,7 +13,7 @@
 import { definePlugin } from './sdk';
 import type { GraphNode, HostContext, RunResult } from './sdk';
 import { BASE, ENDPOINT, Pacer, fetchPage, iocRequestUrl, iocUrl, isChallenge } from './fetch';
-import { lookupTargets, parseDetailPage } from './ioc';
+import { combineDetails, lookupTargets, parseDetailPage, unrenderedReports } from './ioc';
 import type { IocDetail, Report } from './ioc';
 
 /** A record page shows far fewer than this in practice; the cap is a bound, not an expectation. */
@@ -112,6 +112,7 @@ export const lazarusLookup = definePlugin({
                 { typepack: 'run.vineyard.typepacks.threat', category: 'threat', name: 'file_hash' },
                 { typepack: 'run.vineyard.typepacks.identity', category: 'identity', name: 'email_address' },
                 { typepack: 'run.vineyard.typepacks.financial', category: 'financial', name: 'crypto_address' },
+                { typepack: 'run.vineyard.typepacks.cryptocurrency', category: 'cryptocurrency', name: 'crypto_address' },
             ],
             produces: [
                 { typepack: 'run.vineyard.typepacks.threat', category: 'threat', name: 'campaign' },
@@ -229,9 +230,12 @@ export const lazarusLookup = definePlugin({
                 message: `lazarus.day lookup: ${target.candidates[0] ?? ids[i]} (${i + 1}/${ids.length})`,
             });
 
-            // Try the node's digests strongest-first. A File Hash can hold sha256/sha1/md5 and the
-            // site may index any one of them; every other type has exactly one candidate.
-            let found: { value: string; detail: IocDetail } | null = null;
+            // Try the candidates strongest-first. A File Hash can hold sha256/sha1/md5 and the site
+            // may index any one of them, and they all reach one record, so the first answer is it.
+            // A wallet's candidates are its spellings, and the site can hold a separate record under
+            // each (`every`): all of them are read, so the analyst gets every report naming the
+            // address and a 404 on one spelling is never mistaken for "not listed".
+            const found: Array<{ value: string; detail: IocDetail }> = [];
             let failedHere = false;
             let blockedHere = false;
             for (const value of target.candidates) {
@@ -265,19 +269,21 @@ export const lazarusLookup = definePlugin({
                     failedHere = true;
                     break;
                 }
-                found = { value, detail: parseDetailPage(page.body) };
-                break;
+                found.push({ value, detail: parseDetailPage(page.body) });
+                if (!target.every) break;
             }
             if (stopped) break;
-            if (!found) {
+            if (!found.length) {
                 if (!failedHere && !blockedHere) notListed++;
                 continue;
             }
             listed++;
-            const detail = found.detail;
+            const detail = combineDetails(found.map((f) => f.detail));
 
             try {
-                await graph.updateNode(ids[i], enrichment(node, detail, iocUrl(found.value)));
+                // The first record found, in candidate order: the one the node already points at
+                // when it still exists, so a lookup never re-points a node at a sibling record.
+                await graph.updateNode(ids[i], enrichment(node, detail, iocUrl(found[0].value)));
             } catch {
                 // The record is real but this node's installed typepack refused a field (a value
                 // that is not an integer ASN, an address that fails the type's regex, …). The
@@ -325,9 +331,7 @@ export const lazarusLookup = definePlugin({
                     if (!named.includes(label)) named.push(label);
                 }
             }
-            if (detail.reportCount != null && detail.reportCount > detail.relatedReports.length) {
-                reportsDropped += detail.reportCount - detail.relatedReports.length;
-            }
+            for (const f of found) reportsDropped += unrenderedReports(f.detail);
 
             if (includeRelated && (node.type === 'infrastructure.domain' || node.type === 'infrastructure.autonomous_system')) {
                 const isDomain = node.type === 'infrastructure.domain';

@@ -180,6 +180,178 @@ function ctxOnWeb(net, graph, params, selection = []) {
     check('lookup: no YARA/signature type is consumed', !lookup.manifest.io.consumes.some((t) => t.name === 'signature'));
 }
 
+// ================================================================ search: wallets
+// The Cryptocurrency pack's type, with the network the format settles. Values are real rows of the
+// site's wallet category (2026-11-14), which lists EVM addresses both checksummed and in lower case.
+function walletSearchPage(values) {
+    const articles = values
+        .map(
+            (v) => `<article>
+    <div><hgroup><h4><a href="/iocs/${v}/">${v}</a></h4><h5>WALLET</h5></hgroup></div>
+    <div>First seen: 2026-11-01 • Last seen: 2026-11-02</div>
+</article>`,
+        )
+        .join('\n');
+    return `<p>${values.length} IoCs</p>
+<div id="list-view" class="view-container">
+${articles}
+</div>
+<div id="grid-view"></div>`;
+}
+const WALLETS = [
+    'bc1q5hjy0shhu5eqakqm7ptqquaam7phhw9p988ec6',
+    'TZG47zhb8kcriWQ2rE719yHs1KqgzwMrvF',
+    '0x8d53903625b8e839b9DF4bd28B0EFb1CD6b8639A',
+    '0x80358c5b8f9b2cc27147a1e0f2a6c9a30eb2c397',
+];
+{
+    const graph = makeGraph();
+    const net = makeNet(() => ({ status: 200, body: walletSearchPage(WALLETS) }));
+    const r = await search.run(RUN(net, graph, { query: '0x', category: 'wallet' }));
+    const byAddress = Object.fromEntries(graph.created.map((n) => [n.data.address, n]));
+    check('search wallet: four nodes, all of the Cryptocurrency pack type', graph.created.length === 4 && graph.created.every((n) => n.type === 'cryptocurrency.crypto_address'));
+    check('search wallet: nothing written as the older Financial type', !graph.created.some((n) => n.type === 'financial.crypto_address'));
+    check('search wallet: bc1 is bitcoin', byAddress['bc1q5hjy0shhu5eqakqm7ptqquaam7phhw9p988ec6']?.data.network === 'bitcoin');
+    check('search wallet: T… is tron', byAddress['TZG47zhb8kcriWQ2rE719yHs1KqgzwMrvF']?.data.network === 'tron');
+    check(
+        'search wallet: a checksummed 0x address is written in lower case on evm',
+        byAddress['0x8d53903625b8e839b9df4bd28b0efb1cd6b8639a']?.data.network === 'evm',
+    );
+    check(
+        'search wallet: the provenance URL keeps the site’s own spelling',
+        byAddress['0x8d53903625b8e839b9df4bd28b0efb1cd6b8639a']?.data.lazarus_day_url === 'https://lazarus.day/iocs/0x8d53903625b8e839b9DF4bd28B0EFb1CD6b8639A/',
+    );
+    check('search wallet: counted as crypto addresses', r.counts.wallets === 4 && /4 crypto addresses/.test(r.summary));
+    check('search wallet: io declares the Cryptocurrency type', search.manifest.io.produces.some((t) => t.typepack === 'run.vineyard.typepacks.cryptocurrency' && t.name === 'crypto_address'));
+    check('search wallet: io no longer declares the Financial type', !search.manifest.io.produces.some((t) => t.category === 'financial'));
+}
+{
+    // A project without the Cryptocurrency pack (or with one older than the network written)
+    // refuses the create. That is the project's state, not a bad value, so the summary says what to
+    // install instead of folding it into "refused by the installed typepack".
+    const graph = makeGraph();
+    const createNode = graph.createNode;
+    graph.createNode = async (draft) => {
+        if (draft.type === 'cryptocurrency.crypto_address') throw new Error(`type "${draft.type}" is not defined by any installed typepack.`);
+        return createNode(draft);
+    };
+    const net = makeNet(() => ({ status: 200, body: walletSearchPage(WALLETS.slice(0, 2)) }));
+    const r = await search.run(RUN(net, graph, { query: 'x', category: 'wallet' }));
+    check('search wallet refused: nothing staged, the run does not abort', graph.created.length === 0 && r.counts.wallets_refused === 2);
+    check('search wallet refused: the summary names the type pack to install', /install or update the Cryptocurrency type pack/.test(r.summary));
+    check('search wallet refused: not double-reported as generic refusals', !/value\(s\) were refused by the installed typepack/.test(r.summary));
+}
+{
+    const graph = makeGraph({
+        w1: { id: 'w1', type: 'cryptocurrency.crypto_address', data: { network: 'evm', address: '0x8d53903625b8e839b9df4bd28b0efb1cd6b8639a' } },
+        w2: { id: 'w2', type: 'financial.crypto_address', data: { address: 'TZG47zhb8kcriWQ2rE719yHs1KqgzwMrvF' } },
+    });
+    const net = makeNet(() => ({ status: 404 }));
+    const r = await lookup.run(RUN(net, graph, {}, ['w1', 'w2']));
+    check(
+        'lookup wallet: both address types are looked up, a 0x address under each spelling the site uses',
+        net.calls.length === 3 &&
+            net.calls[0].url === 'https://lazarus.day/iocs/0x8d53903625b8e839b9df4bd28b0efb1cd6b8639a/?utm_source=vineyard' &&
+            net.calls[1].url === 'https://lazarus.day/iocs/0x8d53903625b8e839b9DF4bd28B0EFb1CD6b8639A/?utm_source=vineyard' &&
+            net.calls[2].url === 'https://lazarus.day/iocs/TZG47zhb8kcriWQ2rE719yHs1KqgzwMrvF/?utm_source=vineyard',
+    );
+    check('lookup wallet: 404 on every spelling is one indicator not listed', r.counts.not_listed === 2 && r.counts.looked === 2);
+    check(
+        'lookup wallet: io consumes both crypto address types',
+        ['financial', 'cryptocurrency'].every((c) => lookup.manifest.io.consumes.some((t) => t.category === c && t.name === 'crypto_address')),
+    );
+}
+
+// ================================================================ wallets: the site's spellings
+// lazarus.day keys a record by the exact string a report printed and answers 404 for any other
+// spelling, while the node holds the type pack's lower-case form. Measured 2026-11-14:
+// /iocs/0x10E0…C045E/ is 200 and /iocs/0x10e0…c045e/ is 404; 0x8d53…639A and 0x8d53…639a are two
+// records with different reports.
+const CHECKSUMMED = '0x8d53903625b8e839b9DF4bd28B0EFb1CD6b8639A';
+const LOWER = CHECKSUMMED.toLowerCase();
+const recordPath = (v) => `https://lazarus.day/iocs/${v}/?utm_source=vineyard`;
+const nodesOf = (graph) => Object.fromEntries(graph.created.map((n) => [n.id, n]));
+{
+    // Checksummed only: the site's usual case. Search writes the lower-case node; Lookup on that
+    // node must still find the record and call it listed.
+    const site = (url) =>
+        url.includes('?q=')
+            ? { status: 200, body: walletSearchPage([CHECKSUMMED]) }
+            : url === recordPath(CHECKSUMMED)
+              ? { status: 200, body: fixture('detail-wallet-checksummed.html') }
+              : { status: 404 };
+    const found = makeGraph();
+    await search.run(RUN(makeNet(site), found, { query: '0x8d53', category: 'wallet' }));
+    const node = found.created[0];
+    check('wallet spellings: search writes the lower-case address', node?.data.address === LOWER && node?.data.network === 'evm');
+
+    const graph = makeGraph(nodesOf(found));
+    const net = makeNet(site);
+    const r = await lookup.run(RUN(net, graph, {}, [node.id]));
+    check('wallet spellings: lookup asks for the checksummed record', net.calls.some((c) => c.url === recordPath(CHECKSUMMED)));
+    check('wallet spellings: a checksummed-only record is listed, not a negative', r.counts.listed === 1 && r.counts.not_listed === 0 && !/not listed/.test(r.summary));
+    check('wallet spellings: its report is added', r.counts.reports === 1 && graph.edges.some((e) => e.label === 'reported in'));
+    check(
+        'wallet spellings: the node keeps pointing at the record that exists',
+        graph.updates[0]?.data.lazarus_day_url === `https://lazarus.day/iocs/${CHECKSUMMED}/`,
+    );
+}
+{
+    // Both spellings are records: both are read, both reports are added, the dates are the widest,
+    // and the node's own record URL stays.
+    const graph = makeGraph({
+        w: {
+            id: 'w',
+            type: 'cryptocurrency.crypto_address',
+            data: { network: 'evm', address: LOWER, lazarus_day_url: `https://lazarus.day/iocs/${CHECKSUMMED}/` },
+        },
+    });
+    const net = makeNet((url) =>
+        url === recordPath(CHECKSUMMED)
+            ? { status: 200, body: fixture('detail-wallet-checksummed.html') }
+            : url === recordPath(LOWER)
+              ? { status: 200, body: fixture('detail-wallet-lower.html') }
+              : { status: 404 },
+    );
+    const r = await lookup.run(RUN(net, graph, {}, ['w']));
+    check('wallet two records: each spelling is requested once', net.calls.length === 2 && net.calls[0].url === recordPath(CHECKSUMMED));
+    check('wallet two records: one indicator, listed', r.counts.looked === 1 && r.counts.listed === 1);
+    check('wallet two records: the reports of both records are added', r.counts.reports === 2 && graph.created.filter((n) => n.type === 'threat.campaign').length === 2);
+    const patch = graph.updates[0]?.data ?? {};
+    check(
+        'wallet two records: earliest first-seen and latest last-seen across both',
+        patch.lazarus_day_first_seen === '2026-10-30' && patch.lazarus_day_last_seen === '2026-11-07',
+    );
+    check('wallet two records: the node’s own record URL stays', patch.lazarus_day_url === `https://lazarus.day/iocs/${CHECKSUMMED}/`);
+}
+{
+    // One search page listing both spellings: one node, counted once, the first row's URL, the
+    // widest dates — not whichever row came last.
+    const page = `<p>2 IoCs</p>
+<div id="list-view" class="view-container">
+<article>
+    <div><hgroup><h4><a href="/iocs/${CHECKSUMMED}/">${CHECKSUMMED}</a></h4><h5>WALLET</h5></hgroup></div>
+    <div>First seen: 2026-11-06 • Last seen: 2026-11-06</div>
+</article>
+<article>
+    <div><hgroup><h4><a href="/iocs/${LOWER}/">${LOWER}</a></h4><h5>WALLET</h5></hgroup></div>
+    <div>First seen: 2026-10-30 • Last seen: 2026-11-07</div>
+</article>
+</div>
+<div id="grid-view"></div>`;
+    const graph = makeGraph();
+    const r = await search.run(RUN(makeNet(() => ({ status: 200, body: page })), graph, { query: '0x8d53', category: 'wallet' }));
+    const last = graph.created[graph.created.length - 1]?.data ?? {};
+    check('search wallet spellings: counted as one crypto address', r.counts.wallets === 1 && r.counts.iocs === 1 && r.counts.wallet_spellings_merged === 1);
+    check(
+        'search wallet spellings: the last write carries the first row’s URL and the widest dates',
+        last.lazarus_day_url === `https://lazarus.day/iocs/${CHECKSUMMED}/` &&
+            last.lazarus_day_first_seen === '2026-10-30' &&
+            last.lazarus_day_last_seen === '2026-11-07',
+    );
+    check('search wallet spellings: the summary says they were merged', /another spelling of the same address/.test(r.summary));
+}
+
 // ================================================================ search: hash records
 const HASH_SHA256 = '24d004a104d4d54034dbcffc2a4b19a11f39008a575aa614ea04703480b1022c';
 const HASH_MD5 = 'db349b97c37d22f5ea1d1841e3c89eb4';
@@ -420,6 +592,16 @@ ${articles}
     check('lookup asn: related IPs are capped', graph.created.filter((n) => n.type === 'infrastructure.ip_address').length === 10);
     check('lookup asn: the cap is stated in the summary', /left out \(limit 10\)/.test(r.summary));
     check('lookup asn: IPs link from the ASN', graph.edges.filter((e) => e.label === 'announces').length === 10);
+}
+
+// ================================================================ the pack page
+// The catalog's About: at most about 1,500 characters, nothing about Vineyard itself. 1.6.0's
+// wallet-network note took it to 1,864 before it was cut back.
+{
+    const m = JSON.parse(readFileSync(new URL('./plugins/lazarusday.manifest.json', import.meta.url), 'utf8'));
+    check(`pack page: the JSON is the bundle's`, m.description === pack.description && m.summary === pack.summary);
+    check(`pack page: at most 1,500 characters (${pack.description.length})`, pack.description.length <= 1500);
+    check('pack page: nothing about how Vineyard installs or stages', !/type pack|typepack|review|staged/i.test(pack.description));
 }
 
 // ================================================================ report

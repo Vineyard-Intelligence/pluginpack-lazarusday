@@ -9,8 +9,21 @@
 // behaviour (network, graph writes, summaries) is exercised separately by test-plugin.mjs.
 import { readFileSync } from 'node:fs';
 import { iocPath, iocRequestUrl, iocUrl, isChallenge, searchUrl, withSource } from './fetch';
-import { parseDetailPage, parseSearchPage, nodeForItem, lookupTargets } from './ioc';
+import { parseDetailPage, parseSearchPage, nodeForItem, lookupTargets, combineDetails, unrenderedReports, mergeWalletDraft, walletKey } from './ioc';
 import type { SearchItem } from './ioc';
+import { createHash } from 'node:crypto';
+import {
+    base58CheckDecode,
+    base58CheckEncode,
+    canonicalAddress,
+    cashAddrEncode,
+    classifyAddress,
+    eip55,
+    identityFold,
+    keccak256,
+    keccakSponge256,
+    sha256,
+} from './crypto-address';
 
 declare const process: { exit(code: number): never };
 
@@ -150,6 +163,149 @@ const eq = (actual: unknown, expected: unknown, msg: string) =>
     eq(nodeForItem(item('asn', 'not-an-asn'), 'u'), null, 'node: an unparseable ASN is skipped, not guessed');
 }
 
+// ---- wallets: the network is what the format settles, nothing more --------------------------
+// Real values from the site's wallet category (fetched 2026-11-14): it lists EVM addresses both
+// checksummed and in lower case, and says nothing about chains.
+{
+    const item = (value: string): SearchItem => ({ kind: 'wallet', rawKind: 'WALLET', value, path: '/iocs/x/' });
+    const wallet = (value: string) => {
+        const d = nodeForItem(item(value), 'u');
+        return [d?.type, d?.data.network, d?.data.address];
+    };
+    eq(wallet('bc1q5hjy0shhu5eqakqm7ptqquaam7phhw9p988ec6'), ['cryptocurrency.crypto_address', 'bitcoin', 'bc1q5hjy0shhu5eqakqm7ptqquaam7phhw9p988ec6'], 'wallet: bc1 is bitcoin');
+    eq(wallet('TZG47zhb8kcriWQ2rE719yHs1KqgzwMrvF'), ['cryptocurrency.crypto_address', 'tron', 'TZG47zhb8kcriWQ2rE719yHs1KqgzwMrvF'], 'wallet: a Base58Check T… address is tron');
+    eq(
+        wallet('0x8d53903625b8e839b9DF4bd28B0EFb1CD6b8639A'),
+        ['cryptocurrency.crypto_address', 'evm', '0x8d53903625b8e839b9df4bd28b0efb1cd6b8639a'],
+        'wallet: a 0x address is on an unstated EVM chain, written in lower case',
+    );
+    eq(wallet('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa')[1], 'unknown', 'wallet: a 1… address could be BTC, BCH or BSV, so it is unknown');
+    eq(wallet('3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy')[1], 'unknown', 'wallet: a 3… address is unknown too');
+    eq(wallet('TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6u')[1], 'unknown', 'wallet: a T… string that fails its checksum is not called tron');
+    // Encoded with the BIP-173 reference implementation from a made-up 20-byte program.
+    eq(wallet('ltc1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5dyg36p')[1], 'litecoin', 'wallet: ltc1 is litecoin');
+    eq(wallet('ltc1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5dyg36q')[1], 'unknown', 'wallet: an ltc1 string with a bad checksum is not litecoin');
+    eq(
+        wallet('bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a'),
+        ['cryptocurrency.crypto_address', 'bitcoin_cash', 'qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a'],
+        'wallet: a CashAddr is bitcoin_cash, written without its prefix',
+    );
+    eq(wallet('0:83dfd552e63729b472fcbcc8c45ebcc6691702558b68ec7527e1ba403a0f31a8')[1], 'unknown', 'wallet: TON raw is also Everscale’s format, so unknown');
+    eq(
+        wallet('BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4'),
+        ['cryptocurrency.crypto_address', 'bitcoin', 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4'],
+        'wallet: an upper-case segwit address is bitcoin, in lower case',
+    );
+    eq(
+        wallet('addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x')[1],
+        'cardano',
+        'wallet: an addr1 address is cardano (past the 90-character bech32 limit)',
+    );
+    const prov = nodeForItem(item('0x8035'), 'https://lazarus.day/iocs/0x8035/');
+    eq(prov?.data.lazarus_day_url, 'https://lazarus.day/iocs/0x8035/', 'wallet: provenance URL kept');
+}
+
+// ---- address formats (crypto-address.ts) -----------------------------------------------------
+{
+    let mismatch = 0;
+    for (let n = 0; n < 200; n++) {
+        const b = new Uint8Array(n).map((_, i) => (i * 131 + n * 7) & 0xff);
+        if (Buffer.from(sha256(b)).toString('hex') !== createHash('sha256').update(b).digest('hex')) mismatch++;
+    }
+    eq(mismatch, 0, 'sha256: agrees with node:crypto on every length from 0 to 199 bytes (block boundaries included)');
+
+    // The CashAddr specification's own legacy ↔ CashAddr pairs.
+    const PAIRS: Array<[string, string]> = [
+        ['1BpEi6DfDAUFd7GtittLSdBeYJvcoaVggu', 'qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a'],
+        ['1KXrWXciRDZUpQwQmuM1DbwsKDLYAYsVLR', 'qr95sy3j9xwd2ap32xkykttr4cvcu7as4y0qverfuy'],
+        ['16w1D5WRVKJuZUsSRzdLp9w3YGcgoxDXb', 'qqq3728yw0y47sqn6l2na30mcw6zm78dzqre909m2r'],
+        ['3CWFddi6m4ndiGyKqzYvsFYagqDLPVMTzC', 'ppm2qsznhks23z7629mms6s4cwef74vcwvn0h829pq'],
+        ['3LDsS579y7sruadqu11beEJoTjdFiFCdX4', 'pr95sy3j9xwd2ap32xkykttr4cvcu7as4yc93ky28e'],
+        ['31nwvkZwyPdgzjBJZXfDmSWsC4ZLKpYyUw', 'pqq3728yw0y47sqn6l2na30mcw6zm78dzq5ucqzc37'],
+    ];
+    for (const [legacy, cash] of PAIRS) eq(canonicalAddress('bitcoin_cash', legacy), cash, `bch: ${legacy} converts to its CashAddr`);
+    const d = base58CheckDecode(PAIRS[0][0])!;
+    eq(cashAddrEncode(0, d.body), PAIRS[0][1], 'bch: encoder matches the specification');
+
+    const ltc = canonicalAddress('litecoin', '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy');
+    eq(ltc, 'MQMHBtvnBfxTzt3K2bdxgSE7qZPHSXWsGM', 'ltc: a 3… address becomes the M… form of the same script hash');
+    eq(base58CheckDecode(ltc!)?.body, base58CheckDecode('3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy')?.body, 'ltc: same hash, new version byte');
+    eq(base58CheckEncode(0x00, base58CheckDecode('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa')!.body), '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', 'base58check: round trip');
+
+    eq(canonicalAddress('bitcoin', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNb'), null, 'btc: a bad checksum is not an address');
+    eq(canonicalAddress('ethereum', '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed'), '0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed', 'eth: lower case');
+    eq(canonicalAddress('bsc', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'), null, 'evm networks take only 0x addresses');
+
+    // identityFold mirrors the app's normalize: crypto_address on what packs write.
+    eq(identityFold('0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed'), '0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed', 'fold: EIP-55');
+    eq(identityFold('bitcoincash:QPM2QSZNHKS23Z7629MMS6S4CWEF74VCWVY22GDX6A'.toLowerCase()), PAIRS[0][1], 'fold: CashAddr prefix');
+    eq(identityFold('1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2'), '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2', 'fold: Base58 stays');
+    eq(classifyAddress('  0xABCDEFabcdef0123456789ABCDEFabcdef012345  ').address, '0xabcdefabcdef0123456789abcdefabcdef012345', 'classify: trims and folds');
+}
+
+// ---- Keccak-256 and EIP-55 -------------------------------------------------------------------
+{
+    // node:crypto has SHA3-256 and not Keccak-256; they are the same sponge with a different
+    // padding byte, so agreeing with sha3-256 on every length across three blocks checks the
+    // permutation and the absorbing, and two published Keccak-256 digests check the padding.
+    let mismatch = 0;
+    for (let n = 0; n < 420; n++) {
+        const b = new Uint8Array(n).map((_, i) => (i * 37 + n) & 0xff);
+        if (Buffer.from(keccakSponge256(b, 0x06)).toString('hex') !== createHash('sha3-256').update(b).digest('hex')) mismatch++;
+    }
+    eq(mismatch, 0, 'keccak: the sponge agrees with node:crypto sha3-256 on every length from 0 to 419 bytes');
+    const hex = (b: Uint8Array) => Buffer.from(b).toString('hex');
+    eq(hex(keccak256(new Uint8Array())), 'c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470', 'keccak256 of the empty string');
+    eq(hex(keccak256(new TextEncoder().encode('abc'))), '4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45', 'keccak256 of "abc"');
+
+    // EIP-55's own test vectors, then the spellings lazarus.day filed real wallets under.
+    const VECTORS = [
+        '0x52908400098527886E0F7030069857D2E4169EE7',
+        '0x8617E340B3D01FA5F11F306F4090FD50E238070D',
+        '0xde709f2102306220921060314715629080e2fb77',
+        '0x27b1fdb04752bbc536007a920d24acb045561c26',
+        '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed',
+        '0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359',
+        '0xdbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB',
+        '0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb',
+        '0x10E0A8B8EEC6395A2043f4300d76353fa95C045E',
+        '0x8d53903625b8e839b9DF4bd28B0EFb1CD6b8639A',
+    ];
+    for (const v of VECTORS) eq(eip55(v.toLowerCase()), v, `eip55: ${v}`);
+    eq(eip55('0x1234'), null, 'eip55: not an address');
+}
+
+// ---- wallets filed under two spellings -------------------------------------------------------
+// The site keeps 0x8d53…639a as two records: checksummed (Rekt, 2026-11-06) and lower case
+// (bitquery, 2026-10-30 to 2026-11-07). One node, both records' reports, the widest dates.
+{
+    const upper = parseDetailPage(fixture('detail-wallet-checksummed.html'));
+    const lower = parseDetailPage(fixture('detail-wallet-lower.html'));
+    eq([upper.kind, upper.heading, upper.firstSeen], ['wallet', '0x8d53903625b8e839b9DF4bd28B0EFb1CD6b8639A', '2026-11-06'], 'wallet record: checksummed');
+    eq([lower.kind, lower.firstSeen, lower.lastSeen], ['wallet', '2026-10-30', '2026-11-07'], 'wallet record: lower case is a record of its own');
+    check(upper.relatedReports.length === 1 && lower.relatedReports.length === 1, 'wallet record: one report each');
+    check(upper.relatedReports[0]?.path !== lower.relatedReports[0]?.path, 'wallet record: the two spellings name different reports');
+
+    const both = combineDetails([upper, lower]);
+    eq([both.firstSeen, both.lastSeen], ['2026-10-30', '2026-11-07'], 'combine: earliest first-seen, latest last-seen');
+    eq(both.relatedReports.map((r) => r.path).sort(), [upper.relatedReports[0].path, lower.relatedReports[0].path].sort(), 'combine: every report once');
+    eq(combineDetails([upper, upper]).relatedReports.length, 1, 'combine: a report on both records is one report');
+    check(combineDetails([upper]) === upper, 'combine: one record is returned as it is');
+    eq(unrenderedReports({ ...upper, reportCount: 3 }), 2, 'unrendered: the counter beyond the rendered reports');
+    eq(unrenderedReports({ ...upper, reportCount: null }), 0, 'unrendered: no counter, nothing assumed');
+
+    const a = { network: 'evm', address: '0x8d53903625b8e839b9df4bd28b0efb1cd6b8639a', lazarus_day_url: 'U', lazarus_day_first_seen: '2026-11-06', lazarus_day_last_seen: '2026-11-06' };
+    const b = { network: 'evm', address: '0x8d53903625b8e839b9df4bd28b0efb1cd6b8639a', lazarus_day_url: 'L', lazarus_day_first_seen: '2026-10-30', lazarus_day_last_seen: '2026-11-07' };
+    eq(
+        mergeWalletDraft(a, b),
+        { network: 'evm', address: a.address, lazarus_day_url: 'U', lazarus_day_first_seen: '2026-10-30', lazarus_day_last_seen: '2026-11-07' },
+        'merge: first row keeps its URL, dates widen',
+    );
+    check(walletKey(a) === walletKey({ network: 'evm', address: '0x8d53903625b8e839b9DF4bd28B0EFb1CD6b8639A' }), 'wallet key: case of a 0x address does not split it');
+    check(walletKey(a) !== walletKey({ ...a, network: 'bsc' }), 'wallet key: another network is another node');
+    check(walletKey({ network: 'unknown', address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' }) !== walletKey({ network: 'unknown', address: '1a1zp1ep5qgefi2dmptftl5slmv7divfna' }), 'wallet key: Base58 case is the address');
+}
+
 // ---- lookup targets ------------------------------------------------------------------------
 {
     const target = lookupTargets({
@@ -162,6 +318,50 @@ const eq = (actual: unknown, expected: unknown, msg: string) =>
     const domain = lookupTargets({ id: 'n2', type: 'infrastructure.domain', data: { domain_name: 'Evil.Example' } });
     eq(domain?.candidates, ['evil.example'], 'lookup: domain lower-cased');
 
+    eq(target?.every, false, 'lookup: a file’s digests reach one record, so the first answer is it');
+
+    // Both crypto address types are looked up: the Financial pack's older type has no network.
+    // Every spelling the site may file the address under is a candidate, and all are read.
+    const LOWER = '0x8d53903625b8e839b9df4bd28b0efb1cd6b8639a';
+    const CHECKSUMMED = '0x8d53903625b8e839b9DF4bd28B0EFb1CD6b8639A';
+    eq(
+        lookupTargets({ id: 'n5', type: 'financial.crypto_address', data: { address: CHECKSUMMED } }),
+        { candidates: [CHECKSUMMED, LOWER], kind: 'wallet', every: true },
+        'lookup: the older Financial crypto address, as written and in lower case',
+    );
+    eq(
+        lookupTargets({ id: 'n6', type: 'cryptocurrency.crypto_address', data: { network: 'evm', address: LOWER } }),
+        { candidates: [LOWER, CHECKSUMMED], kind: 'wallet', every: true },
+        'lookup: a lower-case 0x address is also asked for in its EIP-55 spelling',
+    );
+    eq(
+        lookupTargets({
+            id: 'n8',
+            type: 'cryptocurrency.crypto_address',
+            data: { network: 'evm', address: LOWER, lazarus_day_url: 'https://lazarus.day/iocs/0x10E0A8B8EEC6395A2043f4300d76353fa95C045E/' },
+        })?.candidates,
+        [LOWER, CHECKSUMMED],
+        'lookup: a record URL naming another address is not followed',
+    );
+    eq(
+        lookupTargets({
+            id: 'n9',
+            type: 'cryptocurrency.crypto_address',
+            data: { network: 'evm', address: '0x10e0a8b8eec6395a2043f4300d76353fa95c045e', lazarus_day_url: 'https://lazarus.day/iocs/0x10E0A8B8EEC6395A2043F4300D76353FA95C045E/' },
+        })?.candidates,
+        ['0x10E0A8B8EEC6395A2043F4300D76353FA95C045E', '0x10e0a8b8eec6395a2043f4300d76353fa95c045e', '0x10E0A8B8EEC6395A2043f4300d76353fa95C045E'],
+        'lookup: the spelling the node’s own record names comes first, whatever its case',
+    );
+    eq(
+        lookupTargets({ id: 'n7', type: 'cryptocurrency.crypto_address', data: { network: 'bitcoin_cash', address: 'qpm2q' } })?.candidates,
+        ['qpm2q', 'bitcoincash:qpm2q'],
+        'lookup: a bare CashAddr is also tried with its prefix',
+    );
+    eq(
+        lookupTargets({ id: 'n10', type: 'cryptocurrency.crypto_address', data: { network: 'tron', address: 'TZG47zhb8kcriWQ2rE719yHs1KqgzwMrvF' } })?.candidates,
+        ['TZG47zhb8kcriWQ2rE719yHs1KqgzwMrvF'],
+        'lookup: a Base58 address has one spelling',
+    );
     eq(lookupTargets({ id: 'n3', type: 'threat.malware', data: { name: 'x' } }), null, 'lookup: unsupported type');
     eq(
         lookupTargets({ id: 'n4', type: 'threat.signature', data: { name: 'r', signature_type: 'yara' } }),

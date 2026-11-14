@@ -11,6 +11,7 @@
 // exercise the same code the pack runs, without a browser or a network.
 import type { GraphNode } from './sdk';
 import { decodeSegment, textOf } from './html';
+import { classifyAddress, eip55, identityFold } from './crypto-address';
 
 export type IocKind = 'domain' | 'ipv4' | 'ipv6' | 'url' | 'hash' | 'email' | 'wallet' | 'asn' | 'unknown';
 
@@ -278,6 +279,59 @@ export function parseDetailPage(html: string): IocDetail {
     return detail;
 }
 
+/**
+ * Reports the site's counter names but the page did not render, per record. Summed per record
+ * before records are combined: one report linked from two spellings is rendered on both, so a
+ * combined counter would count it twice and call the duplicate "not added".
+ */
+export function unrenderedReports(detail: IocDetail): number {
+    return detail.reportCount != null ? Math.max(0, detail.reportCount - detail.relatedReports.length) : 0;
+}
+
+/**
+ * Several records of ONE indicator — a wallet the site files under two spellings — as one detail:
+ * the earliest first-seen date, the latest last-seen date, every report once (by its path), and the
+ * first record's value wherever only one can stand. The counters are dropped; see
+ * unrenderedReports.
+ */
+export function combineDetails(details: IocDetail[]): IocDetail {
+    if (details.length === 1) return details[0];
+    const dates = (pick: (d: IocDetail) => string | undefined) =>
+        details
+            .map(pick)
+            .filter((d): d is string => !!d)
+            .sort();
+    const firstSeen = dates((d) => d.firstSeen);
+    const lastSeen = dates((d) => d.lastSeen);
+    const union = (pick: (d: IocDetail) => string[]) => [...new Set(details.flatMap(pick))];
+    const reports: Report[] = [];
+    for (const d of details) for (const r of d.relatedReports) if (!reports.some((x) => x.path === r.path)) reports.push(r);
+    const first = <K extends keyof IocDetail>(k: K): IocDetail[K] | undefined => details.find((d) => d[k] != null)?.[k];
+    // A coordinate pair comes from one record, never one half from each.
+    const located = details.find((d) => d.latitude != null && d.longitude != null);
+    return {
+        kind: details[0].kind,
+        heading: details[0].heading,
+        md5: first('md5'),
+        sha1: first('sha1'),
+        sha256: first('sha256'),
+        country: first('country'),
+        latitude: located?.latitude,
+        longitude: located?.longitude,
+        asn: first('asn'),
+        asnName: first('asnName'),
+        organization: first('organization'),
+        resolvedIps: union((d) => d.resolvedIps),
+        urlsOnDomain: union((d) => d.urlsOnDomain),
+        associatedIps: union((d) => d.associatedIps),
+        firstSeen: firstSeen[0],
+        lastSeen: lastSeen[lastSeen.length - 1],
+        relatedReports: reports,
+        reportCount: null,
+        relatedIocCount: null,
+    };
+}
+
 // ---- values → node drafts ------------------------------------------------------------------
 
 /** The part of a node draft that is about the IoC itself, before provenance is attached. */
@@ -285,6 +339,10 @@ export interface NodeDraft {
     type: string;
     data: Record<string, unknown>;
 }
+
+/** The Cryptocurrency pack's address type. The Financial pack's `financial.crypto_address` has no
+ *  network and is only read now, never written. */
+export const CRYPTO_ADDRESS = 'cryptocurrency.crypto_address';
 
 function hashKind(value: string): 'sha256' | 'sha1' | 'md5' | null {
     const hex = value.trim().toLowerCase();
@@ -324,8 +382,16 @@ export function nodeForItem(item: SearchItem, url: string): NodeDraft | null {
             return { type: 'web.url', data: { url: value, ...provenance } };
         case 'email':
             return { type: 'identity.email_address', data: { email: value.toLowerCase(), ...provenance } };
-        case 'wallet':
-            return { type: 'financial.crypto_address', data: { address: value, ...provenance } };
+        case 'wallet': {
+            // The Cryptocurrency pack's type, identified by (network, address): the site lists
+            // values without saying which chain, and the same string is another account on another
+            // one. So the network is what the FORMAT settles (bc1…, ltc1…, T…, CashAddr), else
+            // `evm` for a 0x address and `unknown` for the rest — what the source said, kept apart
+            // from any later judgement about which chain it is on. The address is written in the
+            // pack's canonical form (an EVM address in lower case, whatever the site printed).
+            const { network, address } = classifyAddress(value);
+            return { type: CRYPTO_ADDRESS, data: { network, address, ...provenance } };
+        }
         case 'asn': {
             const n = /^AS(\d+)$/i.exec(value)?.[1];
             if (!n) return null;
@@ -351,15 +417,81 @@ export function nodeForItem(item: SearchItem, url: string): NodeDraft | null {
     }
 }
 
+/**
+ * One wallet the site files under two spellings, as one node.
+ *
+ * lazarus.day keeps an EVM address checksummed and in lower case as two records, and the type pack
+ * folds the two into one node. Written as they came, the second create would set the record URL and
+ * dates to whichever row happened to be last, and both rows would be counted as added. So the run
+ * merges them itself: the earliest first-seen, the latest last-seen, and the record URL of the row
+ * met first (Lookup reads every spelling, whichever URL the node keeps).
+ */
+export function mergeWalletDraft(prev: Record<string, unknown>, next: Record<string, unknown>): Record<string, unknown> {
+    const out = { ...next, ...prev };
+    // ISO dates (YYYY-MM-DD) order as strings.
+    const pick = (key: string, better: (candidate: string, current: string) => boolean) => {
+        const current = typeof prev[key] === 'string' ? (prev[key] as string) : '';
+        const candidate = typeof next[key] === 'string' ? (next[key] as string) : '';
+        if (candidate && (!current || better(candidate, current))) out[key] = candidate;
+    };
+    pick('lazarus_day_first_seen', (candidate, current) => candidate < current);
+    pick('lazarus_day_last_seen', (candidate, current) => candidate > current);
+    return out;
+}
+
+/** The identity the Cryptocurrency pack gives a draft: network and folded address (no memo here). */
+export const walletKey = (data: Record<string, unknown>) => `${String(data.network)}\0${identityFold(String(data.address ?? ''))}`;
+
 export interface LookupTarget {
     /** Values to try against `/iocs/<value>/`, strongest first. */
     candidates: string[];
     kind: IocKind;
+    /**
+     * How the candidates relate. false: aliases of ONE record (a file's three digests all reach
+     * the same page), so the first that answers is the record. true: each spelling may be a record
+     * of its own (a wallet), so every one is read and what they say is combined.
+     */
+    every: boolean;
 }
 
 function str(data: Record<string, unknown>, key: string): string {
     const v = data[key];
     return typeof v === 'string' ? v.trim() : '';
+}
+
+/** The value a stored `https://lazarus.day/iocs/<segment>/` names, or '' when it is not one. */
+function recordValue(url: string): string {
+    const m = /^https:\/\/lazarus\.day\/iocs\/([^/?#]+)\/?(?:[?#].*)?$/.exec(url);
+    return m ? decodeSegment(m[1]) : '';
+}
+
+/**
+ * Every spelling of one crypto address the site may file a record under.
+ *
+ * The node holds the type pack's canonical form — an EVM address in lower case — but lazarus.day
+ * keys a record by the exact string a report printed, and its records are case-sensitive: most EVM
+ * wallets are filed checksummed (11 of 13 on the wallet category page, 2026-11-14) and answer 404
+ * in lower case, and some addresses are filed BOTH ways, as two records with different reports and
+ * dates. Asking for the stored lower-case string alone called a listed wallet "not listed". So the
+ * candidates are the spelling the node's own record URL names (what Search found), the value as
+ * stored, the EIP-55 spelling and the lower-case one; and a CashAddr also with its prefix, which
+ * the type pack drops. A recorded spelling counts only if it folds to the same address, so an
+ * edited node cannot send the lookup to someone else's record.
+ */
+function walletCandidates(data: Record<string, unknown>, address: string, network: string): string[] {
+    const out: string[] = [];
+    const add = (v: string | null) => {
+        if (v && !out.includes(v)) out.push(v);
+    };
+    const recorded = recordValue(str(data, 'lazarus_day_url'));
+    if (recorded && identityFold(recorded) === identityFold(address)) add(recorded);
+    add(address);
+    if (/^0x[0-9a-fA-F]{40}$/.test(address)) {
+        add(eip55(address));
+        add(address.toLowerCase());
+    }
+    if (network === 'bitcoin_cash' && !/^bitcoincash:/i.test(address)) add(`bitcoincash:${address}`);
+    return out;
 }
 
 /**
@@ -375,33 +507,36 @@ export function lookupTargets(node: GraphNode): LookupTarget | null {
     switch (node.type) {
         case 'infrastructure.domain': {
             const v = str(data, 'domain_name').toLowerCase();
-            return v ? { candidates: [v], kind: 'domain' } : null;
+            return v ? { candidates: [v], kind: 'domain', every: false } : null;
         }
         case 'infrastructure.ip_address': {
             const v = str(data, 'ip_address');
-            return v ? { candidates: [v], kind: v.includes(':') ? 'ipv6' : 'ipv4' } : null;
+            return v ? { candidates: [v], kind: v.includes(':') ? 'ipv6' : 'ipv4', every: false } : null;
         }
         case 'web.url': {
             const v = str(data, 'url');
-            return v ? { candidates: [v], kind: 'url' } : null;
+            return v ? { candidates: [v], kind: 'url', every: false } : null;
         }
         case 'identity.email_address': {
             const v = str(data, 'email').toLowerCase();
-            return v ? { candidates: [v], kind: 'email' } : null;
+            return v ? { candidates: [v], kind: 'email', every: false } : null;
         }
-        case 'financial.crypto_address': {
+        // Both: nodes this pack wrote before 1.6.0, and anything else written against the Financial
+        // pack, are the older type, and are still looked up.
+        case 'financial.crypto_address':
+        case CRYPTO_ADDRESS: {
             const v = str(data, 'address');
-            return v ? { candidates: [v], kind: 'wallet' } : null;
+            return v ? { candidates: walletCandidates(data, v, str(data, 'network')), kind: 'wallet', every: true } : null;
         }
         case 'infrastructure.autonomous_system': {
             const n = data.autonomous_system_number;
-            return typeof n === 'number' && Number.isInteger(n) ? { candidates: [`AS${n}`], kind: 'asn' } : null;
+            return typeof n === 'number' && Number.isInteger(n) ? { candidates: [`AS${n}`], kind: 'asn', every: false } : null;
         }
         case 'threat.file_hash': {
             const candidates = ['sha256', 'sha1', 'md5']
                 .map((k) => str(data, k).toLowerCase())
                 .filter((v) => hashKind(v) !== null);
-            return candidates.length ? { candidates: [...new Set(candidates)], kind: 'hash' } : null;
+            return candidates.length ? { candidates: [...new Set(candidates)], kind: 'hash', every: false } : null;
         }
         default:
             return null;

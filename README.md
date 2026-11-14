@@ -23,6 +23,17 @@ CORS headers, and the desktop shell waives cross-origin protection for the endpo
 first. Results become Domain, IP Address, URL, File Hash, E-mail Address, Crypto Address, ASN or
 Indicator nodes, each carrying `lazarus_day_url` and the site's first/last-seen dates.
 
+Crypto addresses are written as the Cryptocurrency type pack's `cryptocurrency.crypto_address`
+(`run.vineyard.typepacks.cryptocurrency`), identified by network and address. The site does not
+say which chain a wallet is on, so the network is what the address format settles — `bc1…`
+bitcoin, `ltc1…` litecoin, a 34-character Base58Check `T…` tron, a CashAddr bitcoin_cash, and the
+`btg`, `bnb`, `addr`/`stake` bech32 prefixes — otherwise `evm` for a `0x…` address (in lower case)
+and `unknown` for the rest. A `1…`/`3…` address is the same string on Bitcoin, Bitcoin Cash and
+Bitcoin SV, so it stays `unknown`. The site files some `0x…` addresses both checksummed and in
+lower case, as two records; a search that lists both makes one node with the first row's
+`lazarus_day_url` and the widest dates. Lookup still accepts the Financial pack's older
+`financial.crypto_address`.
+
 Hash results are resolved through their record page, so a File Hash carries the file's MD5, SHA-1
 and SHA-256 together. A record with no SHA-256 stays an Indicator with its digest type. Resolution is
 capped at 60 hash records per run; the rest fall back to the listed digest.
@@ -34,6 +45,11 @@ onto the node, and every report that names it becomes a Campaign linked `reporte
 report URL, author, date and tags kept. A Domain or ASN can also add the IPs and URLs the site lists
 for it. A 404 means the site does not list the value — not a failed lookup.
 
+The site's records are case-sensitive, and a node holds an EVM address in lower case, so a crypto
+address is asked for under every spelling the site may use: the one its `lazarus_day_url` names,
+the stored value, the EIP-55 checksummed form and lower case. Every record that answers is read,
+and the reports of all of them are added; "not listed" means no spelling has a record.
+
 ## Notes
 
 - lazarus.day flags its IoCs as automatically extracted and warns they may include non-malicious
@@ -42,6 +58,8 @@ for it. A 404 means the site does not list the value — not a failed lookup.
   assumed.
 - Requests are paced at 350 ms; a 429 or 5xx gets one retry.
 - Report → Campaign is this pack's model; tags do not become Threat Actors.
+- A crypto address the project refuses (the Cryptocurrency type pack missing, or older than the
+  network written) is counted separately in the summary, which says to install or update it.
 
 ## Build
 
