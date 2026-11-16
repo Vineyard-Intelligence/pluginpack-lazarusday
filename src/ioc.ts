@@ -522,7 +522,8 @@ export function lookupTargets(node: GraphNode): LookupTarget | null {
             return v ? { candidates: [v], kind: 'email', every: false } : null;
         }
         // Both: nodes this pack wrote before 1.6.0, and anything else written against the Financial
-        // pack, are the older type, and are still looked up.
+        // pack, are the older type, and are still looked up. Financial 3.0.0 removed that type, so it
+        // is no longer in the manifest's `consumes` (lookup.ts); a project keeps its nodes of it.
         case 'financial.crypto_address':
         case CRYPTO_ADDRESS: {
             const v = str(data, 'address');

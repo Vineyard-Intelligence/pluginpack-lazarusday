@@ -6,7 +6,7 @@
 // test uses, so a run sees realistic bytes without touching the network.
 //
 // Run: node test-plugin.mjs   (npm run test:plugin)
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import pack from './dist/pack.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./test-fixtures/${name}`, import.meta.url), 'utf8');
@@ -256,10 +256,36 @@ const WALLETS = [
             net.calls[2].url === 'https://lazarus.day/iocs/TZG47zhb8kcriWQ2rE719yHs1KqgzwMrvF/?utm_source=vineyard',
     );
     check('lookup wallet: 404 on every spelling is one indicator not listed', r.counts.not_listed === 2 && r.counts.looked === 2);
+    // The legacy node (w2) above is still looked up, but the type is not declared: Financial 3.0.0
+    // removed it, and the registry refuses a manifest naming a type no published Type Pack defines.
     check(
-        'lookup wallet: io consumes both crypto address types',
-        ['financial', 'cryptocurrency'].every((c) => lookup.manifest.io.consumes.some((t) => t.category === c && t.name === 'crypto_address')),
+        'lookup wallet: io consumes the Cryptocurrency address and not the removed Financial one',
+        lookup.manifest.io.consumes.some((t) => t.category === 'cryptocurrency' && t.name === 'crypto_address') &&
+            !lookup.manifest.io.consumes.some((t) => t.category === 'financial'),
     );
+}
+
+// ================================================================ io against the type packs
+// What the registry's check_typerefs.py holds every listed pack to: each type in `io` is one a
+// published Type Pack defines, under the pack it names. A consumed type nothing defines matches no node
+// and the plugin silently drops out of the run panel. 1.6.0's Lookup consumed financial.crypto_address,
+// which Financial 3.0.0 removed. Read from the type pack checkouts beside this repository, and skipped,
+// loudly, without them.
+{
+    const dirs = ['../typepack-basic/typepacks', '../typepack-cryptocurrency/typepacks'].map((d) => new URL(`${d}/`, import.meta.url));
+    if (!dirs.every((d) => existsSync(d))) {
+        console.log('test-plugin: SKIP io vs type packs — ../typepack-basic and ../typepack-cryptocurrency are not both checked out beside this one');
+    } else {
+        const defined = new Map();
+        for (const d of dirs)
+            for (const f of readdirSync(d).filter((x) => x.endsWith('.json'))) {
+                const doc = JSON.parse(readFileSync(new URL(f, d), 'utf8'));
+                for (const t of doc.types ?? []) defined.set(`${t.category}.${t.name}`, doc.identifier);
+            }
+        for (const p of pack.plugins)
+            for (const t of [...p.manifest.io.consumes, ...p.manifest.io.produces])
+                check(`io: ${p.manifest.identifier} names ${t.category}.${t.name}, which ${t.typepack} defines`, defined.get(`${t.category}.${t.name}`) === t.typepack);
+    }
 }
 
 // ================================================================ wallets: the site's spellings

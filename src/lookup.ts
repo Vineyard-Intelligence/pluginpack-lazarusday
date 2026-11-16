@@ -10,6 +10,13 @@
 // intelligence — the reports (with author, date and tags) that mention the exact value, plus for a
 // domain the IPs it resolved to and the URLs on it, for an IP its ASN and location, for a hash the
 // other two digests. Those are the facts staged here. Nothing is inferred from a tag or a name.
+//
+// THE FINANCIAL PACK'S LEGACY `financial.crypto_address` IS READ, NOT DECLARED (from 1.7.0). Search
+// wrote wallets as that type before 1.6.0, and Financial 3.0.0 removed it. The registry's CI requires
+// every type in `io` to be one a published Type Pack defines, so a manifest consuming it could not be
+// listed beside Financial 3.0.0. The run panel therefore offers Lookup on Cryptocurrency pack
+// addresses only; a legacy node handed to it all the same (projects keep theirs, and no update
+// converts them) is still looked up, by lookupTargets.
 import { definePlugin } from './sdk';
 import type { GraphNode, HostContext, RunResult } from './sdk';
 import { BASE, ENDPOINT, Pacer, fetchPage, iocRequestUrl, iocUrl, isChallenge } from './fetch';
@@ -111,7 +118,6 @@ export const lazarusLookup = definePlugin({
                 { typepack: 'run.vineyard.typepacks.infrastructure', category: 'infrastructure', name: 'autonomous_system' },
                 { typepack: 'run.vineyard.typepacks.threat', category: 'threat', name: 'file_hash' },
                 { typepack: 'run.vineyard.typepacks.identity', category: 'identity', name: 'email_address' },
-                { typepack: 'run.vineyard.typepacks.financial', category: 'financial', name: 'crypto_address' },
                 { typepack: 'run.vineyard.typepacks.cryptocurrency', category: 'cryptocurrency', name: 'crypto_address' },
             ],
             produces: [

@@ -2,7 +2,7 @@
   "identifier": "run.vineyard.pluginpacks.lazarusday",
   "content_type": "vineyard:pluginpack",
   "name": "lazarus.day",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "summary": "Searches and reads lazarus.day (https://lazarus.day), the public DPRK indicator index by @lazarusholic (https://x.com/lazarusholic): keyword search stages matches as graph nodes, and exact-record lookup adds the reports naming them. Desktop only.",
   "description": "For checking whether an indicator appears in public reporting on North Korean (DPRK) activity and which reports name it, or for finding indicators there by part of their value (not by report title or actor name).\n\n**Needs:** nothing; the public pages are read anonymously.\n\n**Cost:** none published; the site is one researcher's dataset, not an API, so requests are 350 ms apart.\n\n**Who sees it:** only lazarus.day, which receives each keyword and indicator looked up. The indicators are never contacted.\n\n**Read results with care:**\n- lazarus.day flags its IoCs as auto-extracted and possibly benign: a hit means the value appears in DPRK reporting, not a verdict.\n- No record is a real negative; a bot challenge or rate limit is reported as such, never as \"no results\".\n- A report is a Campaign; its tags stay text and never become Threat Actor nodes.\n- The site does not say which chain a wallet is on, so an address gets a network only when its format settles one (bc1…, ltc1…, T…, a CashAddr). A 0x address is on an unstated EVM chain; 1… or 3… stays unknown (Bitcoin, Bitcoin Cash or SV).\n\n**Data and licences:** the site's content and IoC data are © 2021–2026 @lazarusholic, CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/). The pack is not affiliated with the site.\n\n**Source:** https://github.com/Vineyard-Intelligence/pluginpack-lazarusday (Apache-2.0; the site captures in `test-fixtures/` and the thumbnail cropped from the site's artwork stay CC BY-SA 4.0, see `NOTICE`)",
   "author": {
@@ -199,11 +199,6 @@
             "typepack": "run.vineyard.typepacks.identity",
             "category": "identity",
             "name": "email_address"
-          },
-          {
-            "typepack": "run.vineyard.typepacks.financial",
-            "category": "financial",
-            "name": "crypto_address"
           },
           {
             "typepack": "run.vineyard.typepacks.cryptocurrency",

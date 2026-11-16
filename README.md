@@ -31,8 +31,11 @@ bitcoin, `ltc1…` litecoin, a 34-character Base58Check `T…` tron, a CashAddr 
 and `unknown` for the rest. A `1…`/`3…` address is the same string on Bitcoin, Bitcoin Cash and
 Bitcoin SV, so it stays `unknown`. The site files some `0x…` addresses both checksummed and in
 lower case, as two records; a search that lists both makes one node with the first row's
-`lazarus_day_url` and the widest dates. Lookup still accepts the Financial pack's older
-`financial.crypto_address`.
+`lazarus_day_url` and the widest dates. Lookup still reads a node of the Financial pack's older
+`financial.crypto_address`, which Search wrote before 1.6.0, when it is handed one. Financial 3.0.0
+removed that type, so the manifest no longer declares it and the run panel offers Lookup on
+Cryptocurrency pack addresses only; Chain Explorer's Identify Crypto Network links a legacy node to
+one.
 
 Hash results are resolved through their record page, so a File Hash carries the file's MD5, SHA-1
 and SHA-256 together. A record with no SHA-256 stays an Indicator with its digest type. Resolution is
